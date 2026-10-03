@@ -718,31 +718,28 @@ end
 -- Public functions
 ---------------------------------------------------------------------------
 
+local function ScrollZoneIntoView(areaID)
+    local list = frame.zoneList
+    for i, item in ipairs(list.items) do
+        if item.areaID == areaID then
+            local visible = list:NumVisible()
+            if i <= list.offset or i > list.offset + visible then
+                list.offset = math.max(0, i - math.floor(visible / 2))
+                list:Update()
+            end
+            return
+        end
+    end
+end
+
 function ns:SelectArea(areaID)
     if not areaID or not self.Zones[areaID] then
         return
     end
     local changed = self.selectedArea ~= areaID
     self.selectedArea = areaID
-    -- Make sure the zone is visible in the list.
-    local group = self.Zones[areaID].group
-    if self.db.collapsedGroups[group] then
-        self.db.collapsedGroups[group] = nil
-    end
     if frame and frame:IsShown() then
         self:RefreshUI(not changed)
-        if changed then
-            for i, item in ipairs(frame.zoneList.items) do
-                if item.areaID == areaID then
-                    local visible = frame.zoneList:NumVisible()
-                    if i <= frame.zoneList.offset or i > frame.zoneList.offset + visible then
-                        frame.zoneList.offset = math.max(0, i - math.floor(visible / 2))
-                        frame.zoneList:Update()
-                    end
-                    break
-                end
-            end
-        end
     end
 end
 
@@ -754,11 +751,17 @@ function ns:RefreshUI(keepStoryOffset, skipInspector)
     if not self.selectedArea or not self.Zones[self.selectedArea] then
         self.selectedArea = self.currentArea or next(self.Zones)
     end
-    if self.renderedArea ~= self.selectedArea then
+    local areaChanged = self.renderedArea ~= self.selectedArea
+    if areaChanged then
         keepStoryOffset = false
         self.renderedArea = self.selectedArea
+        -- Make sure the newly selected zone is listed and scrolled into view.
+        self.db.collapsedGroups[self.Zones[self.selectedArea].group] = nil
     end
     frame.zoneList:SetItems(BuildZoneItems(), true)
+    if areaChanged then
+        ScrollZoneIntoView(self.selectedArea)
+    end
 
     local areaID = self.selectedArea
     local zone = self.Zones[areaID]

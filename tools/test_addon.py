@@ -257,6 +257,11 @@ def main():
     lua_do("local ns = ... SlashCmdList.STORYLINES('')")
     check(lua.eval("StorylinesFrame ~= nil and StorylinesFrame:IsShown()"), "/storylines opens the window")
     check(lua_do("local ns = ... return ns.selectedArea") == 40, "window opens on the current zone")
+    check(lua_do("""local ns = ...
+        for _, row in ipairs(StorylinesFrame.zoneList.rows) do
+            if row:IsShown() and row.item and row.item.areaID == 40 then return true end
+        end
+        return false""") is True, "the zone list is scrolled to show the current zone")
     title = lua.eval("StorylinesFrame.zoneTitle:GetText()")
     check(title == "Westfall", "zone title is %r" % title)
     rows = lua_do("""local ns = ...
@@ -297,11 +302,14 @@ def main():
         end
         return table.concat(out, '\\n')""")
     print("   " + "\n   ".join(zone_rows.splitlines()[:6]) + "\n   ...")
-    lua_do("""local ns = ...
+    clicked = lua_do("""local ns = ...
         for _, row in ipairs(StorylinesFrame.zoneList.rows) do
-            if row.item and row.item.areaID == 12 then row:GetScript('OnClick')(row, 'LeftButton') end
+            if row:IsShown() and row.item and row.item.areaID and row.item.areaID ~= 40 then
+                row:GetScript('OnClick')(row, 'LeftButton')
+                return row.item.areaID
+            end
         end""")
-    check(lua_do("local ns = ... return ns.selectedArea") == 12, "clicking a zone selects it")
+    check(clicked and lua_do("local ns = ... return ns.selectedArea") == clicked, "clicking a zone selects it")
     lua_do("local ns = ... SlashCmdList.STORYLINES('zone Durotar')")
     check(lua_do("local ns = ... return ns.selectedArea") == 14, "/storylines zone Durotar selects Durotar")
     lua_do("""local ns = ...
