@@ -51,10 +51,15 @@ zone has, which ones you skipped completely, and which quest in a chain you need
 
 ## Installation
 
-1. Download this repository (Code → Download ZIP) and extract it.
-2. Rename the extracted folder to `Storylines` and move it into the `Interface\AddOns` folder of
-   your WoW Forever installation. `Storylines.toc` must sit directly inside that folder.
-3. Restart the game or `/reload`.
+1. **[Download Storylines 0.3.0](https://github.com/VitalikRibiy/Storylines/raw/refs/heads/claude/wow-forever-story-tracker-vrrpsz/dist/Storylines-0.3.0.zip)**
+   and unzip it. You get a folder called `Storylines`.
+2. Move that folder into the `Interface\AddOns` folder of your WoW Forever installation.
+   `Storylines.toc` must sit directly inside it (`Interface\AddOns\Storylines\Storylines.toc`).
+3. Start the game (or `/reload`). On the character screen, under **AddOns**, make sure Storylines
+   is enabled; tick **Load out of date AddOns** if it is marked out of date.
+
+To package a new version after changing the code: commit, bump `## Version` in `Storylines.toc`,
+and run `tools/package.sh` (writes `dist/Storylines-<version>.zip`).
 
 ## Usage
 
