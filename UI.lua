@@ -329,7 +329,8 @@ local function BuildStoryItems(areaID)
             shownStories = shownStories + 1
             local expanded = expandedStories[story.key]
             table.insert(items, { type = "story", story = story, done = done, total = total, started = started,
-                complete = complete, ignored = ignored, expanded = expanded })
+                complete = complete, ignored = ignored, expanded = expanded,
+                repProblems = not complete and ns:GetStoryReputationProblems(story) or nil })
             if expanded then
                 local index = 0
                 for _, step in ipairs(story.steps) do
@@ -424,6 +425,7 @@ local function UpdateStoryRow(row, item)
             icon = icon,
             desaturate = desat,
             text = (item.expanded and "- " or "+ ") .. item.story.name .. ns:GetStoryTagMarkup(item.story, 14)
+                .. ((item.repProblems and #item.repProblems > 0) and (" |T" .. ns.WARNING_ICON .. ":14:14|t") or "")
                 .. (item.ignored and " |cffff6060(ignored)|r" or ""),
             font = "GameFontNormal",
             color = (item.complete or item.ignored) and COLOR_DONE or COLOR_GOLD,
@@ -529,6 +531,15 @@ local function OnStoryRowEnter(row)
         GameTooltip:AddLine(("%d of %d quests completed"):format(item.done, item.total), 1, 1, 1)
         if item.complete then
             GameTooltip:AddLine("Storyline complete!", 0.25, 1, 0.25)
+        end
+        if item.repProblems and #item.repProblems > 0 then
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine(("|T%s:14:14|t Your reputation is too low for %d quest%s here:"):format(ns.WARNING_ICON,
+                #item.repProblems, #item.repProblems == 1 and "" or "s"), 1, 0.4, 0.4)
+            for _, entry in ipairs(item.repProblems) do
+                GameTooltip:AddLine("  " .. ns:GetQuestName(entry.questID) .. ": "
+                    .. ns:DescribeReputationProblem(entry.problem), 1, 1, 1, true)
+            end
         end
         GameTooltip:AddLine(" ")
         GameTooltip:AddLine("Click to inspect the storyline and show its quests.", 0.6, 0.6, 0.6)

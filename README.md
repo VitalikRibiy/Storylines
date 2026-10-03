@@ -30,7 +30,8 @@ zone has, which ones you skipped completely, and which quest in a chain you need
 - **Side quests**: quests that aren't part of any chain, listed separately with their own counter.
 - Only shows quests your **faction and race** can actually do.
 - **Reputation requirements**: quests that need a reputation you don't have are marked
-  ("needs Honored") in the list. The details panel shows a red **warning box** with the
+  ("needs Honored") in the list. Storylines that contain such a quest get a ⚠ icon, and
+  hovering the storyline lists which quests need what. The details panel shows a red **warning box** with the
   requirement, your current standing and how much reputation you still need. It appears even
   if earlier quests are still missing, so you know before you travel there. A storyline's
   overview lists every quest in it that your reputation is too low for. You also get a

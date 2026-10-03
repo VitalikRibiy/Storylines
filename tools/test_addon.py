@@ -522,6 +522,35 @@ def main():
     check("Reputation too low for" in text and "Rise and Be Recognized|r: Requires Friendly with Frostwolf Clan" in text,
           "the storyline overview warns about quests your reputation is too low for")
     lua_do("local ns = ... __faction, __race = 'Alliance', 1 ns:UpdatePlayerInfo() ns:CloseInspector()")
+    # Storyline rows in the main list get a warning icon (Wetlands: "Apprentice's Duties" contains 484).
+    lua_do("local ns = ... __rep[47] = 4200 ns.__fire('UPDATE_FACTION') ns.db.hideCompleted = false ns:ShowUI(11)")
+    row_text = lua_do("""local ns = ...
+        for _, row in ipairs(StorylinesFrame.storyList.rows) do
+            if row:IsShown() and row.item and row.item.type == 'story' and row.item.story.name == "Apprentice's Duties" then
+                return row.text:GetText()
+            end
+        end""")
+    check(row_text and "UI-Dialog-Icon-AlertNew" in row_text,
+          "the storyline row shows a reputation warning icon (%s)" % row_text)
+    others = lua_do("""local ns = ...
+        local n = 0
+        for _, row in ipairs(StorylinesFrame.storyList.rows) do
+            if row:IsShown() and row.item and row.item.type == 'story' and row.text:GetText():find('AlertNew') then n = n + 1 end
+        end
+        return n""")
+    check(others == 1, "only storylines with reputation-locked quests get the icon (%d)" % others)
+    lua_do("""local ns = ...
+        for _, row in ipairs(StorylinesFrame.storyList.rows) do
+            if row:IsShown() and row.item and row.item.type == 'story' then row:GetScript('OnEnter')(row) end
+        end""")
+    lua_do("local ns = ... __rep[47] = 9000 ns.__fire('UPDATE_FACTION') ns:RefreshUI()")
+    row_text = lua_do("""local ns = ...
+        for _, row in ipairs(StorylinesFrame.storyList.rows) do
+            if row:IsShown() and row.item and row.item.type == 'story' and row.item.story.name == "Apprentice's Duties" then
+                return row.text:GetText()
+            end
+        end""")
+    check("AlertNew" not in row_text, "the icon goes away once the reputation is reached")
 
     print("Data sanity:")
     bad = lua_do("""local ns = ...

@@ -147,7 +147,7 @@ local function AddWarning(title, body)
         w.icon = w:CreateTexture(nil, "ARTWORK")
         w.icon:SetSize(20, 20)
         w.icon:SetPoint("TOPLEFT", 9, -7)
-        w.icon:SetTexture("Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew")
+        w.icon:SetTexture(ns.WARNING_ICON)
         w.title = w:CreateFontString(nil, "ARTWORK", "GameFontNormal")
         w.title:SetPoint("TOPLEFT", 36, -9)
         w.title:SetJustifyH("LEFT")
@@ -334,14 +334,9 @@ local function RenderStory(story)
         AddText(("Experience left: %s XP"):format(ns:FormatNumber(xpLeft)), "GameFontHighlight", nil, 0, 2)
     end
     local repLines = {}
-    for _, step in ipairs(story.steps) do
-        local questID, state = ns:ResolveStep(step)
-        local problem = questID and state == ns.STATE_TODO and not ns:IsQuestIgnored(questID)
-            and ns:GetReputationProblem(questID)
-        if problem then
-            repLines[#repLines + 1] = ("- |cffffd100%s|r: %s"):format(ns:GetQuestName(questID),
-                ns:DescribeReputationProblem(problem))
-        end
+    for _, entry in ipairs(ns:GetStoryReputationProblems(story)) do
+        repLines[#repLines + 1] = ("- |cffffd100%s|r: %s"):format(ns:GetQuestName(entry.questID),
+            ns:DescribeReputationProblem(entry.problem))
     end
     if #repLines > 0 then
         AddGap(4)

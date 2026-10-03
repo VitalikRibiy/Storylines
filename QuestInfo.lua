@@ -203,6 +203,25 @@ function ns:GetReputationProblem(questID)
     return nil
 end
 
+--- Quests of a storyline that this character has not done yet and that reputation keeps out of reach
+-- (regardless of other prerequisites, so you can plan ahead).
+-- @return list of { questID = id, problem = GetReputationProblem table }
+function ns:GetStoryReputationProblems(story)
+    local list = {}
+    for _, step in ipairs(story.steps) do
+        local questID, state = self:ResolveStep(step)
+        if questID and state == self.STATE_TODO and not self:IsQuestIgnored(questID) then
+            local problem = self:GetReputationProblem(questID)
+            if problem then
+                list[#list + 1] = { questID = questID, problem = problem }
+            end
+        end
+    end
+    return list
+end
+
+ns.WARNING_ICON = "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew"
+
 --- "Requires Honored with Ironforge (you are Friendly +1,200)"
 function ns:DescribeReputationProblem(problem)
     local faction = self:GetFactionName(problem.factionID)
