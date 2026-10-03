@@ -381,7 +381,8 @@ end
 
 --- Quest icon like the game's: yellow "?" ready to turn in, grey "?" in progress,
 -- yellow "!" can be picked up now, grey "!" not available yet.
--- @return icon, desaturated, availability ("available" / "level" / "locked" for quests not started), required level
+-- @return icon, desaturated, availability ("available" / "locked" / "reputation" / "level" for quests not started),
+--   and the availability detail (required level, or the reputation problem)
 function ns:GetQuestIcon(questID, state)
     if state == ns.STATE_DONE then
         return ICON_DONE, false
@@ -390,8 +391,8 @@ function ns:GetQuestIcon(questID, state)
     elseif state == ns.STATE_ACTIVE then
         return ICON_ACTIVE, true
     end
-    local availability, level = ns:GetQuestAvailability(questID)
-    return ICON_AVAILABLE, availability ~= "available", availability, level
+    local availability, detail = ns:GetQuestAvailability(questID)
+    return ICON_AVAILABLE, availability ~= "available", availability, detail
 end
 
 local function isInspected(item)
@@ -431,7 +432,7 @@ local function UpdateStoryRow(row, item)
             right = levels .. progressColor(item.done, item.total) .. item.done .. "/" .. item.total .. "|r",
         })
     elseif item.type == "step" or item.type == "side" then
-        local icon, desat, availability, reqLevel = ns:GetQuestIcon(item.questID, item.state)
+        local icon, desat, availability, detail = ns:GetQuestIcon(item.questID, item.state)
         local ignored = ns:IsQuestIgnored(item.questID)
         local color = COLOR_WHITE
         if ignored or item.state == ns.STATE_DONE then
@@ -447,7 +448,10 @@ local function UpdateStoryRow(row, item)
         elseif item.state == ns.STATE_ACTIVE then
             right = "|cffffd100in log|r"
         elseif availability == "level" then
-            right = "|cffff4040level " .. reqLevel .. "|r"
+            right = "|cffff4040level " .. detail .. "|r"
+        elseif availability == "reputation" then
+            right = "|cffff4040" .. (detail.tooHigh and "rep too high" or ("needs " .. ns:FormatReputation(detail.required)))
+                .. "|r"
         elseif availability == "available" and item.type == "step" then
             right = "|cffffd100available|r"
         end

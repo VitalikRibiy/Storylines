@@ -18,6 +18,7 @@ local defaults = {
     showSide = true,
     autoZone = true,
     announce = true,
+    repWarnings = true,
     showIgnored = false,
     minimap = { angle = 215, hide = false },
     ignoredQuests = {},
@@ -445,6 +446,9 @@ events:RegisterEvent("QUEST_LOG_UPDATE")
 events:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:RegisterEvent("PLAYER_LEVEL_UP") -- difficulty colors and XP depend on the level
+events:RegisterEvent("GOSSIP_SHOW")       -- talking to a quest giver: warn about reputation-locked quests
+events:RegisterEvent("QUEST_GREETING")
+events:RegisterEvent("UPDATE_FACTION")    -- reputation changes can unlock quests
 
 local refreshPending = false
 local function requestRefresh()
@@ -474,13 +478,16 @@ events:SetScript("OnEvent", function(_, event, arg1)
         end
     elseif event == "QUEST_TURNED_IN" then
         ns:OnQuestTurnedIn(arg1)
+        ns:CheckFollowUpReputation(arg1)
         requestRefresh()
+    elseif event == "GOSSIP_SHOW" or event == "QUEST_GREETING" then
+        ns:CheckQuestGiverReputation()
     elseif event == "ZONE_CHANGED_NEW_AREA" or event == "PLAYER_ENTERING_WORLD" then
         if ns.OnZoneChanged then
             ns:OnZoneChanged()
         end
     else
-        -- QUEST_ACCEPTED / QUEST_REMOVED / QUEST_LOG_UPDATE / PLAYER_LEVEL_UP
+        -- QUEST_ACCEPTED / QUEST_REMOVED / QUEST_LOG_UPDATE / PLAYER_LEVEL_UP / UPDATE_FACTION
         ns:InvalidateProgress()
         requestRefresh()
     end
@@ -518,6 +525,9 @@ local function slashHandler(msg)
     elseif cmd == "announce" then
         ns.db.announce = not ns.db.announce
         ns:Print("Chat announcements " .. (ns.db.announce and "enabled." or "disabled."))
+    elseif cmd == "repwarn" then
+        ns.db.repWarnings = not ns.db.repWarnings
+        ns:Print("Reputation warnings " .. (ns.db.repWarnings and "enabled." or "disabled."))
     elseif cmd == "reset" then
         wipe(ns.db.ignoredQuests)
         wipe(ns.db.ignoredStories)
@@ -532,6 +542,7 @@ local function slashHandler(msg)
         ns:Print("/storylines zone <name> - show a zone (e.g. /stl zone westfall, or just /stl westf)")
         ns:Print("/storylines minimap - show/hide the minimap button")
         ns:Print("/storylines announce - toggle chat messages when you finish a storyline step")
+        ns:Print("/storylines repwarn - toggle warnings when your reputation is too low for a quest")
         ns:Print("/storylines reset - restore all ignored quests and storylines")
     elseif not showZone(msg, true) then
         ns:Print("Unknown command. Type /storylines help")

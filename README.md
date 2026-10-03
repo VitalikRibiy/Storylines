@@ -29,6 +29,14 @@ zone has, which ones you skipped completely, and which quest in a chain you need
   storylines that contain them.
 - **Side quests**: quests that aren't part of any chain, listed separately with their own counter.
 - Only shows quests your **faction and race** can actually do.
+- **Reputation requirements**: quests that need a reputation you don't have are marked
+  ("needs Honored") and explained in the tooltip and details panel. You also get a **warning**
+  in chat and as red on-screen text:
+  - when you talk to a quest giver who has a storyline quest your reputation is too low for (the
+    game itself just hides those quests): *"James Halloran has [Young Crocolisk Skins] for you, but
+    your reputation is not high enough: Requires Honored with Ironforge (you are Friendly +1,200)."*
+  - when you turn in a quest whose follow-up needs more reputation.
+  Each quest is reported once per session. `/stl repwarn` turns these warnings off.
 - **Chat messages** when you turn in a storyline quest (`Storyline progress: The Defias
   Brotherhood 5/8`) and when you finish a whole storyline or zone.
 - **Right-click** a quest or storyline to ignore it, for a quest you can't get or a chain you don't
@@ -51,7 +59,8 @@ zone has, which ones you skipped completely, and which quest in a chain you need
 | `/storylines` or `/stl` | Open/close the window |
 | `/stl zone <name>` or `/stl <name>` | Open a zone by name or the start of it, e.g. `/stl westf` |
 | `/stl minimap` | Show/hide the minimap button |
-| `/stl announce` | Turn the chat messages on/off |
+| `/stl announce` | Turn the storyline progress messages on/off |
+| `/stl repwarn` | Turn the reputation warnings on/off |
 | `/stl reset` | Restore every ignored quest and storyline |
 | `/stl help` | List the commands |
 

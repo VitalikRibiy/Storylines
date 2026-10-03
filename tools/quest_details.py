@@ -11,6 +11,7 @@ OUTPUT = os.path.join(ROOT, "Data", "QuestDetails.lua")
 # QuestieDB quest fields
 REQ_LEVEL, OBJECTIVES_TEXT, STARTED_BY, FINISHED_BY, REP_REWARD = 4, 8, 2, 3, 26
 PRE_GROUP, PRE_SINGLE = 12, 13
+REQ_MIN_REP, REQ_MAX_REP = 19, 20
 # NPC fields
 NPC_NAME, NPC_SPAWNS, NPC_ZONE, NPC_SUBNAME = 1, 7, 9, 14
 # Object fields
@@ -62,6 +63,14 @@ def id_list(value):
 def first_ids(value, index):
     group = (value or {}).get(index) or {}
     return [v for v in luatable.as_list(group) or [] if isinstance(v, int)]
+
+
+def rep_pair(value):
+    """'factionID,value' for a reputation requirement, or '' when there is none."""
+    pair = luatable.as_list(value) or []
+    if len(pair) >= 2 and pair[0] and pair[1] is not None:
+        return "%d,%d" % (pair[0], pair[1])
+    return ""
 
 
 def write(ctx, fetch, used):
@@ -130,7 +139,9 @@ def write(ctx, fetch, used):
         "",
         "-- [questID] = { requiredLevel, tag (1 Elite / 41 PvP / 62 Raid / 81 Dungeon / 84 Escort / 0 none),",
         "--   objectives, giverKind, giverID, turnInKind, turnInID, xp, {factionID, rep, ...}, {rewardItemIDs},",
-        "--   {questIDs that must all be completed first}, {questIDs of which any one must be completed first} }",
+        "--   {questIDs that must all be completed first}, {questIDs of which any one must be completed first},",
+        "--   {factionID, minimum reputation} or {}, {factionID, maximum reputation} or {} }",
+        "-- Reputation values count from the start of Neutral (Friendly 3000, Honored 9000, Revered 21000, Exalted 42000).",
         "-- Giver kinds: 1 NPC (ns.NPCs), 2 object (ns.Objects), 3 item (ns.ItemNames).",
         "ns.QuestDetails = {",
     ]
@@ -151,10 +162,10 @@ def write(ctx, fetch, used):
         pre_all = sorted({p for p in id_list(q.get(PRE_GROUP)) if p in used and p != qid})
         pre_any = sorted({p for p in id_list(q.get(PRE_SINGLE)) if p in used and p != qid})
         quest_xp = (xp.get(qid) or [0, 0])[1] or 0
-        lines.append("[%d]={%d,%d,%s,%d,%d,%d,%d,%d,{%s},{%s},{%s},{%s}}," % (
+        lines.append("[%d]={%d,%d,%s,%d,%d,%d,%d,%d,{%s},{%s},{%s},{%s},{%s},{%s}}," % (
             qid, q.get(REQ_LEVEL) or 0, tag_of(qid, q), lua_str(objectives), g_kind, g_id, e_kind, e_id, quest_xp,
             ",".join(map(str, reps)), ",".join(map(str, item_ids)), ",".join(map(str, pre_all)),
-            ",".join(map(str, pre_any))))
+            ",".join(map(str, pre_any)), rep_pair(q.get(REQ_MIN_REP)), rep_pair(q.get(REQ_MAX_REP))))
     lines.append("}")
 
     def loc_lua(loc):

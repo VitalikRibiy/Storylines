@@ -133,6 +133,16 @@ C_QuestLog = {
 local mapNames = { [1436] = "Westfall", [1429] = "Elwynn Forest", [1415] = "Eastern Kingdoms", [1411] = "Durotar",
                    [9999] = "Sentinel Hill" }
 local mapParents = { [1436] = 1415, [1429] = 1415, [1411] = 1414, [9999] = 1436 }
+__rep, __npcGUID, __secret, __errors = {}, nil, false, {}
+C_Reputation = { GetFactionDataByID = function(id) return __rep[id] and { currentStanding = __rep[id] } end }
+function UnitGUID() return __npcGUID end
+function issecretvalue() return __secret end
+UIErrorsFrame = { AddMessage = function(_, msg) table.insert(__errors, msg) end }
+function strsplit(sep, s)
+    local out = {}
+    for part in (s .. sep):gmatch("(.-)%" .. sep) do out[#out + 1] = part end
+    return unpack(out)
+end
 C_Map = {
     GetBestMapForUnit = function() return __map end,
     GetMapInfo = function(id) return mapNames[id] and { name = mapNames[id], parentMapID = mapParents[id] or 0 } end,
@@ -452,6 +462,51 @@ def main():
           "the list marks only the quest you can pick up now as available (%s)" % rows)
     status = lua_do("local ns = ... return ns:GetQuestStatusText(262, ns.STATE_TODO)")
     check("Not available yet" in status, "locked quests explain why in their status")
+
+    print("Reputation:")
+    lua_do("""local ns = ...
+        __faction, __race, __level = 'Alliance', 1, 25
+        ns:UpdatePlayerInfo()
+        __rep[47] = 4200 -- Ironforge: Friendly +1,200""")
+    check(lua_do("local ns = ... return (ns:GetQuestAvailability(484))") == "reputation",
+          "Young Crocolisk Skins (484, needs Honored with Ironforge) is blocked at Friendly")
+    status = lua_do("local ns = ... return ns:GetQuestStatusText(484, ns.STATE_TODO)")
+    check("Requires Honored with Ironforge (you are Friendly +1,200)" in status, "status explains it (%s)" % status)
+    lua_do("""local ns = ... __npcGUID = 'Creature-0-1-0-1-2094-0000AAAA'
+        ns.__fire('GOSSIP_SHOW')""")
+    chat = lua.eval("table.concat(__printed, '\\n')")
+    expected = ("James Halloran has |cffffd100[Young Crocolisk Skins]|r for you, but your reputation is not high "
+                "enough: Requires Honored with Ironforge (you are Friendly +1,200).")
+    check(expected in chat, "talking to the quest giver warns in chat")
+    check(lua.eval("__errors[#__errors]") == "Reputation too low for Young Crocolisk Skins",
+          "and shows red on-screen text")
+    count = lua.eval("#__printed")
+    lua_do("local ns = ... ns.__fire('GOSSIP_SHOW')")
+    check(lua.eval("#__printed") == count, "the warning is not repeated for the same quest")
+    lua_do("local ns = ... __rep[47] = 9000 ns.__fire('UPDATE_FACTION')")
+    check(lua_do("local ns = ... return ns:GetQuestAvailability(484)") == "available", "reaching Honored unlocks it")
+    lua_do("local ns = ... __secret = true __npcGUID = 'Creature-0-1-0-1-2094-0000AAAA' ns.__fire('QUEST_GREETING') __secret = false")
+    check(True, "a hidden (secret) NPC identity is ignored without errors")
+    # Follow-up warning after a turn-in (Horde, Alterac Valley: 7161 -> 7163 needs Friendly with Frostwolf Clan).
+    lua_do("""local ns = ...
+        __faction, __race, __level = 'Horde', 2, 55
+        ns:UpdatePlayerInfo()
+        __rep[729] = 500
+        __completed[7161] = true
+        ns.__fire('QUEST_TURNED_IN', 7161)""")
+    chat = lua.eval("table.concat(__printed, '\\n')")
+    check("Your reputation is not high enough for the next quest, |cffffd100[Rise and Be Recognized]|r: Requires "
+          "Friendly with Frostwolf Clan (you are Neutral +500)." in chat, "turning in a quest warns about the follow-up")
+    lua_do("local ns = ... ns.db.repWarnings = false __rep[47] = 0 __faction, __race = 'Alliance', 1 ns:UpdatePlayerInfo()")
+    count = lua.eval("#__printed")
+    lua_do("local ns = ... __npcGUID = 'Creature-0-1-0-1-1-0' ns.__fire('GOSSIP_SHOW')")
+    check(lua.eval("#__printed") == count, "/stl repwarn turns the warnings off")
+    lua_do("local ns = ... ns.db.repWarnings = true __rep[47] = 4200")
+    lua_do("local ns = ... ns:ShowUI(11) ns:InspectQuest(484)")
+    text = lua.eval("__visibleText(StorylinesInspector)")
+    check("Reputation: Honored with Ironforge |cffff4040(you are Friendly +1,200)|r" in text,
+          "the details panel shows the reputation requirement")
+    lua_do("local ns = ... ns:CloseInspector()")
 
     print("Data sanity:")
     bad = lua_do("""local ns = ...

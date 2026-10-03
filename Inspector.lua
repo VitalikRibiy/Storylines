@@ -23,11 +23,13 @@ function ns:GetQuestStatusText(questID, state)
     if STATUS_TEXT[state] then
         return STATUS_TEXT[state]
     end
-    local availability, level = self:GetQuestAvailability(questID)
+    local availability, detail = self:GetQuestAvailability(questID)
     if availability == "available" then
         return "|cffffd100Available - you can pick it up now|r"
     elseif availability == "level" then
-        return "|cffff4040Available at level " .. level .. "|r"
+        return "|cffff4040Available at level " .. detail .. "|r"
+    elseif availability == "reputation" then
+        return "|cffff4040Your reputation is not high enough. " .. self:DescribeReputationProblem(detail) .. "|r"
     end
     return "|cffb0b0b0Not available yet - complete the required quests first|r"
 end
@@ -340,6 +342,23 @@ local function RenderQuest(questID, story)
     end
     if levelLine ~= "" then
         AddText(levelLine, "GameFontHighlight", nil, 0, 2)
+    end
+    -- Reputation requirement, shown whether or not it is met.
+    for _, rep in ipairs({ details.minRep or false, details.maxRep or false }) do
+        if rep then
+            local current = ns:GetReputation(rep[1])
+            local isMax = rep == details.maxRep
+            local met
+            if isMax then
+                met = not current or current <= rep[2]
+            else
+                met = (current or 0) >= rep[2]
+            end
+            AddText(("%s %s with %s %s"):format(isMax and "Reputation: at most" or "Reputation:",
+                ns:FormatReputation(rep[2]), ns:GetFactionName(rep[1]),
+                met and "|cff40ff40(ok)|r" or ("|cffff4040(you are " .. (current and ns:FormatReputation(current)
+                    or "not met yet") .. ")|r")), "GameFontHighlight", nil, 0, 2)
+        end
     end
     if tag then
         AddText(ns:GetTagMarkup(tag, 14) .. " " .. ns:GetTagName(tag) .. " quest"

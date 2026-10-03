@@ -33,7 +33,7 @@ local FACTION_NAMES = {
 local EMPTY = {}
 
 --- @return table|nil { requiredLevel, tag, objectives, giverKind, giverID, turnInKind, turnInID, xp, reputation,
---   items, pre (all must be completed), preAny (any one must be completed) }
+--   items, pre (all must be completed), preAny (any one must be completed), minRep / maxRep ({factionID, value} or nil) }
 function ns:GetQuestDetails(questID)
     local d = self.QuestDetails and self.QuestDetails[questID]
     if not d then
@@ -52,6 +52,8 @@ function ns:GetQuestDetails(questID)
         items = d[10] or EMPTY,
         pre = d[11] or EMPTY,
         preAny = d[12] or EMPTY,
+        minRep = d[13] and d[13][1] and d[13] or nil,
+        maxRep = d[14] and d[14][1] and d[14] or nil,
     }
 end
 
@@ -130,8 +132,91 @@ function ns:GetStoryTagMarkup(story, size)
     return out
 end
 
+---------------------------------------------------------------------------
+-- Reputation
+---------------------------------------------------------------------------
+
+-- Reputation needed for each standing, counted from the start of Neutral (standing IDs 1-8).
+local STANDING_THRESHOLDS = { -42000, -6000, -3000, 0, 3000, 9000, 21000, 42000 }
+local STANDING_NAMES = { "Hated", "Hostile", "Unfriendly", "Neutral", "Friendly", "Honored", "Revered", "Exalted" }
+
+local function standingOf(value)
+    for id = #STANDING_THRESHOLDS, 1, -1 do
+        if value >= STANDING_THRESHOLDS[id] then
+            return id
+        end
+    end
+    return 1
+end
+
+--- "Honored", or "Friendly +1,200" when the value is past the start of the standing.
+function ns:FormatReputation(value)
+    local id = standingOf(value)
+    local name = _G["FACTION_STANDING_LABEL" .. id] or STANDING_NAMES[id]
+    local extra = value - STANDING_THRESHOLDS[id]
+    if extra > 0 and id < #STANDING_THRESHOLDS then
+        return ("%s +%s"):format(name, self:FormatNumber(extra))
+    end
+    return name
+end
+
+--- This character's reputation with a faction, counted from the start of Neutral.
+-- @return value, or nil when the client does not report the faction (not met yet)
+function ns:GetReputation(factionID)
+    if C_Reputation and C_Reputation.GetFactionDataByID then
+        local data = C_Reputation.GetFactionDataByID(factionID)
+        if data and data.currentStanding then
+            return data.currentStanding
+        end
+    end
+    if GetFactionInfoByID then
+        local name, _, _, _, _, barValue = GetFactionInfoByID(factionID)
+        if name and barValue then
+            return barValue
+        end
+    end
+    return nil
+end
+
+--- Checks a quest's reputation requirement.
+-- @return nil when there is no problem, otherwise a table
+--   { factionID, required, current (nil if unknown), tooHigh (true for a maximum that was exceeded) }
+function ns:GetReputationProblem(questID)
+    local d = self.QuestDetails and self.QuestDetails[questID]
+    if not d then
+        return nil
+    end
+    local minRep, maxRep = d[13], d[14]
+    if minRep and minRep[1] then
+        local current = self:GetReputation(minRep[1])
+        -- A faction you have not met counts as the start of Neutral.
+        if (current or 0) < minRep[2] then
+            return { factionID = minRep[1], required = minRep[2], current = current }
+        end
+    end
+    if maxRep and maxRep[1] then
+        local current = self:GetReputation(maxRep[1])
+        if current and current > maxRep[2] then
+            return { factionID = maxRep[1], required = maxRep[2], current = current, tooHigh = true }
+        end
+    end
+    return nil
+end
+
+--- "Requires Honored with Ironforge (you are Friendly +1,200)"
+function ns:DescribeReputationProblem(problem)
+    local faction = self:GetFactionName(problem.factionID)
+    local you = problem.current and self:FormatReputation(problem.current) or "not met yet"
+    if problem.tooHigh then
+        return ("Only available up to %s with %s (you are %s)"):format(
+            self:FormatReputation(problem.required), faction, you)
+    end
+    return ("Requires %s with %s (you are %s)"):format(self:FormatReputation(problem.required), faction, you)
+end
+
 --- Whether this character can pick the quest up now, from the quest's real requirements.
--- @return "available", "level" (prerequisites done, level too low; also returns the level) or "locked"
+-- @return "available", "locked" (earlier quests needed), "reputation" (also returns the problem table, see
+--   GetReputationProblem) or "level" (also returns the required level)
 function ns:GetQuestAvailability(questID)
     local d = self.QuestDetails and self.QuestDetails[questID]
     if not d then
@@ -154,6 +239,10 @@ function ns:GetQuestAvailability(questID)
     end
     if relevant and not met then
         return "locked"
+    end
+    local repProblem = self:GetReputationProblem(questID)
+    if repProblem then
+        return "reputation", repProblem
     end
     local required = d[1] or 0
     if required > (UnitLevel("player") or 1) then
@@ -440,4 +529,94 @@ function ns:SetWaypoint(areaID, x, y, title)
         end
     end
     self:Print(("Waypoint set: %s, %s"):format(title, where))
+end
+
+---------------------------------------------------------------------------
+-- Reputation warnings
+---------------------------------------------------------------------------
+
+local warned = {} -- questID -> true, so each quest is reported once per session
+local questsByGiver -- "npc:ID" / "object:ID" -> { questID, ... }
+
+local function giverIndex()
+    if not questsByGiver then
+        questsByGiver = {}
+        for questID, d in pairs(ns.QuestDetails or EMPTY) do
+            local kind = (d[4] == 1 and "npc") or (d[4] == 2 and "object")
+            if kind then
+                local key = kind .. ":" .. d[5]
+                questsByGiver[key] = questsByGiver[key] or {}
+                table.insert(questsByGiver[key], questID)
+            end
+        end
+    end
+    return questsByGiver
+end
+
+--- Tells the player (chat + red on-screen text) that a quest is out of reach because of reputation.
+-- The chat line is before .. [quest] .. after .. ": <requirement>."
+function ns:WarnReputation(questID, problem, before, after)
+    if warned[questID] or not self.db.repWarnings then
+        return
+    end
+    warned[questID] = true
+    local quest = "|cffffd100[" .. self:GetQuestName(questID) .. "]|r"
+    self:Print(before .. quest .. after .. ": " .. self:DescribeReputationProblem(problem) .. ".")
+    if UIErrorsFrame and UIErrorsFrame.AddMessage then
+        UIErrorsFrame:AddMessage(("Reputation too low for %s"):format(self:GetQuestName(questID)), 1, 0.1, 0.1, 1)
+    end
+end
+
+--- Quests from storylines or side quests that this character could take now if not for reputation.
+local function blockedByReputation(questID)
+    if not ns:IsQuestForPlayer(questID) or ns:IsQuestIgnored(questID) or ns:IsQuestCompleted(questID)
+        or ns:IsOnQuest(questID) then
+        return nil
+    end
+    local availability, problem = ns:GetQuestAvailability(questID)
+    return availability == "reputation" and problem or nil
+end
+
+--- The NPC or object the player is talking to (gossip / quest greeting window).
+-- @return "npc" | "object", id   or nil when unknown (e.g. hidden by the client)
+local function currentGiver()
+    local ok, guid = pcall(UnitGUID, "npc")
+    if not ok or guid == nil or (issecretvalue and issecretvalue(guid)) or type(guid) ~= "string" then
+        return nil
+    end
+    local unitType, _, _, _, _, id = strsplit("-", guid)
+    id = tonumber(id)
+    if not id then
+        return nil
+    end
+    if unitType == "Creature" or unitType == "Vehicle" then
+        return "npc", id
+    elseif unitType == "GameObject" then
+        return "object", id
+    end
+end
+
+--- Called when a gossip or quest greeting window opens.
+function ns:CheckQuestGiverReputation()
+    local kind, id = currentGiver()
+    if not kind then
+        return
+    end
+    for _, questID in ipairs(giverIndex()[kind .. ":" .. id] or EMPTY) do
+        local problem = blockedByReputation(questID)
+        if problem then
+            local name = kind == "npc" and self.NPCs[id] and self.NPCs[id][1] or "This quest giver"
+            self:WarnReputation(questID, problem, name .. " has ", " for you, but your reputation is not high enough")
+        end
+    end
+end
+
+--- Called after a quest is turned in: warn about follow-up quests that reputation keeps out of reach.
+function ns:CheckFollowUpReputation(questID)
+    for _, nextID in ipairs(self:GetNextQuests(questID)) do
+        local problem = blockedByReputation(nextID)
+        if problem then
+            self:WarnReputation(nextID, problem, "Your reputation is not high enough for the next quest, ", "")
+        end
+    end
 end
