@@ -30,8 +30,11 @@ zone has, which ones you skipped completely, and which quest in a chain you need
 - **Side quests**: quests that aren't part of any chain, listed separately with their own counter.
 - Only shows quests your **faction and race** can actually do.
 - **Reputation requirements**: quests that need a reputation you don't have are marked
-  ("needs Honored") and explained in the tooltip and details panel. You also get a **warning**
-  in chat and as red on-screen text:
+  ("needs Honored") in the list. The details panel shows a red **warning box** with the
+  requirement, your current standing and how much reputation you still need. It appears even
+  if earlier quests are still missing, so you know before you travel there. A storyline's
+  overview lists every quest in it that your reputation is too low for. You also get a
+  **warning** in chat and as red on-screen text:
   - when you talk to a quest giver who has a storyline quest your reputation is too low for (the
     game itself just hides those quests): *"James Halloran has [Young Crocolisk Skins] for you, but
     your reputation is not high enough: Requires Honored with Ironforge (you are Friendly +1,200)."*

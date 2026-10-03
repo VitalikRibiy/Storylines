@@ -506,7 +506,22 @@ def main():
     text = lua.eval("__visibleText(StorylinesInspector)")
     check("Reputation: Honored with Ironforge |cffff4040(you are Friendly +1,200)|r" in text,
           "the details panel shows the reputation requirement")
-    lua_do("local ns = ... ns:CloseInspector()")
+    check("You can't get this quest yet" in text and "You need |cffffffff4,800|r more reputation with Ironforge." in text,
+          "the quest details show a warning box with how much reputation is missing")
+    check("Reputation too low - see above" in text, "the status line points to the warning instead of repeating it")
+    lua_do("local ns = ... __rep[47] = 9000 ns.__fire('UPDATE_FACTION') ns:InspectQuest(484)")
+    text = lua.eval("__visibleText(StorylinesInspector)")
+    check("You can't get this quest yet" not in text, "the warning disappears once the reputation is reached")
+    # Storyline overview (Horde, Alterac Valley storyline containing 7163 which needs Friendly with Frostwolf Clan).
+    lua_do("""local ns = ...
+        __faction, __race = 'Horde', 2
+        ns:UpdatePlayerInfo()
+        __rep[729] = 500
+        ns:InspectStory(ns.storiesByQuest[7163][1])""")
+    text = lua.eval("__visibleText(StorylinesInspector)")
+    check("Reputation too low for" in text and "Rise and Be Recognized|r: Requires Friendly with Frostwolf Clan" in text,
+          "the storyline overview warns about quests your reputation is too low for")
+    lua_do("local ns = ... __faction, __race = 'Alliance', 1 ns:UpdatePlayerInfo() ns:CloseInspector()")
 
     print("Data sanity:")
     bad = lua_do("""local ns = ...

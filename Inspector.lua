@@ -19,7 +19,8 @@ local STATUS_TEXT = {
 }
 
 --- One-line status of a quest for this character (shared by the list tooltips and the inspector).
-function ns:GetQuestStatusText(questID, state)
+-- brief: the inspector's warning box already explains a reputation problem in full.
+function ns:GetQuestStatusText(questID, state, brief)
     if STATUS_TEXT[state] then
         return STATUS_TEXT[state]
     end
@@ -29,6 +30,9 @@ function ns:GetQuestStatusText(questID, state)
     elseif availability == "level" then
         return "|cffff4040Available at level " .. detail .. "|r"
     elseif availability == "reputation" then
+        if brief then
+            return "|cffff4040Reputation too low - see above|r"
+        end
         return "|cffff4040Your reputation is not high enough. " .. self:DescribeReputationProblem(detail) .. "|r"
     end
     return "|cffb0b0b0Not available yet - complete the required quests first|r"
@@ -39,8 +43,8 @@ end
 ---------------------------------------------------------------------------
 
 local content, cursor
-local textPool, linePool = {}, {}
-local textUsed, lineUsed = 0, 0
+local textPool, linePool, warningPool = {}, {}, {}
+local textUsed, lineUsed, warningUsed = 0, 0, 0
 
 local function contentWidth()
     return WIDTH - 2 * PADDING - 14
@@ -126,6 +130,51 @@ local function AddLine(opts)
     return line
 end
 
+--- A red warning box: alert icon, title and wrapped explanation.
+local function AddWarning(title, body)
+    warningUsed = warningUsed + 1
+    local w = warningPool[warningUsed]
+    if not w then
+        w = CreateFrame("Frame", nil, content)
+        local bg = w:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetColorTexture(0.45, 0.04, 0.04, 0.45)
+        local edge = w:CreateTexture(nil, "BORDER")
+        edge:SetPoint("TOPLEFT")
+        edge:SetPoint("BOTTOMLEFT")
+        edge:SetWidth(3)
+        edge:SetColorTexture(1, 0.25, 0.25, 0.9)
+        w.icon = w:CreateTexture(nil, "ARTWORK")
+        w.icon:SetSize(20, 20)
+        w.icon:SetPoint("TOPLEFT", 9, -7)
+        w.icon:SetTexture("Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew")
+        w.title = w:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+        w.title:SetPoint("TOPLEFT", 36, -9)
+        w.title:SetJustifyH("LEFT")
+        w.title:SetTextColor(1, 0.4, 0.4)
+        w.text = w:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+        w.text:SetJustifyH("LEFT")
+        w.text:SetJustifyV("TOP")
+        w.text:SetWordWrap(true)
+        warningPool[warningUsed] = w
+    end
+    local width = contentWidth()
+    w:ClearAllPoints()
+    w:SetPoint("TOPLEFT", 0, cursor)
+    w:SetWidth(width)
+    w.title:SetWidth(width - 44)
+    w.title:SetText(title)
+    local titleHeight = w.title:GetStringHeight() or 12
+    w.text:ClearAllPoints()
+    w.text:SetPoint("TOPLEFT", 36, -9 - titleHeight - 3)
+    w.text:SetWidth(width - 44)
+    w.text:SetText(body)
+    local height = math.max(34, 9 + titleHeight + 3 + (w.text:GetStringHeight() or 12) + 8)
+    w:SetHeight(height)
+    w:Show()
+    cursor = cursor - height - 6
+end
+
 local function BeginLayout()
     for i = 1, textUsed do
         textPool[i]:Hide()
@@ -133,7 +182,10 @@ local function BeginLayout()
     for i = 1, lineUsed do
         linePool[i]:Hide()
     end
-    textUsed, lineUsed = 0, 0
+    for i = 1, warningUsed do
+        warningPool[i]:Hide()
+    end
+    textUsed, lineUsed, warningUsed = 0, 0, 0
     cursor = 0
 end
 
@@ -281,6 +333,22 @@ local function RenderStory(story)
     if xpLeft > 0 then
         AddText(("Experience left: %s XP"):format(ns:FormatNumber(xpLeft)), "GameFontHighlight", nil, 0, 2)
     end
+    local repLines = {}
+    for _, step in ipairs(story.steps) do
+        local questID, state = ns:ResolveStep(step)
+        local problem = questID and state == ns.STATE_TODO and not ns:IsQuestIgnored(questID)
+            and ns:GetReputationProblem(questID)
+        if problem then
+            repLines[#repLines + 1] = ("- |cffffd100%s|r: %s"):format(ns:GetQuestName(questID),
+                ns:DescribeReputationProblem(problem))
+        end
+    end
+    if #repLines > 0 then
+        AddGap(4)
+        AddWarning(#repLines == 1 and "Reputation too low for 1 quest here"
+            or ("Reputation too low for %d quests here"):format(#repLines), table.concat(repLines, "\n"))
+    end
+
     local tags = ns:GetStoryTags(story)
     if #tags > 0 then
         local names = {}
@@ -327,6 +395,26 @@ local function RenderQuest(questID, story)
     AddText(ns:GetQuestName(questID) .. (tag and (" " .. ns:GetTagMarkup(tag, 16)) or ""), "GameFontNormalLarge",
         { 1, 0.82, 0 }, 0, 6)
 
+    -- Reputation warning up front, even when earlier quests are still missing, so nobody travels there for nothing.
+    local repProblem = state == ns.STATE_TODO and ns:GetReputationProblem(questID)
+    if repProblem then
+        local availability, detail = ns:GetQuestAvailability(questID)
+        local body = (repProblem.tooHigh and "Your reputation is too high. " or "Your reputation is not high enough. ")
+            .. ns:DescribeReputationProblem(repProblem) .. "."
+        if not repProblem.tooHigh then
+            body = body .. ("\nYou need |cffffffff%s|r more reputation with %s."):format(
+                ns:FormatNumber(repProblem.required - (repProblem.current or 0)), ns:GetFactionName(repProblem.factionID))
+        end
+        if availability == "locked" then
+            body = body .. "\nYou also have to finish the earlier quests first (see Requires)."
+        end
+        local requiredLevel = details.requiredLevel or 0
+        if requiredLevel > (UnitLevel("player") or 1) then
+            body = body .. "\nYou also need to reach level " .. requiredLevel .. "."
+        end
+        AddWarning(repProblem.tooHigh and "You can no longer get this quest" or "You can't get this quest yet", body)
+    end
+
     local level = ns:GetQuestLevel(questID)
     local levelLine = ""
     if level > 0 then
@@ -365,7 +453,7 @@ local function RenderQuest(questID, story)
             .. ((tag == ns.TAG_ELITE or tag == ns.TAG_DUNGEON or tag == ns.TAG_RAID) and " |cff909090- bring a group|r" or ""),
             "GameFontHighlight", nil, 0, 2)
     end
-    AddText("Status: " .. ns:GetQuestStatusText(questID, state), "GameFontHighlight", nil, 0, 2)
+    AddText("Status: " .. ns:GetQuestStatusText(questID, state, repProblem and true), "GameFontHighlight", nil, 0, 2)
     if ns:IsQuestIgnored(questID) then
         AddText("You are ignoring this quest.", "GameFontHighlightSmall", { 1, 0.4, 0.4 }, 0, 2)
     end
