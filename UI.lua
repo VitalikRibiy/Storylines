@@ -17,6 +17,7 @@ local COLOR_DONE = { 0.5, 0.5, 0.5 }
 local COLOR_GREEN = { 0.25, 1, 0.25 }
 local COLOR_GOLD = { 1, 0.82, 0 }
 local COLOR_WHITE = { 1, 1, 1 }
+local COLOR_LOCKED = { 0.75, 0.75, 0.75 }
 
 local frame
 local expandedStories = {}
@@ -315,13 +316,6 @@ end
 -- Story list (right)
 ---------------------------------------------------------------------------
 
-local STATE_TEXT = {
-    [ns.STATE_DONE] = "|cff40ff40Completed|r",
-    [ns.STATE_READY] = "|cff40ff40Ready to turn in|r",
-    [ns.STATE_ACTIVE] = "|cffffd100In your quest log|r",
-    [ns.STATE_TODO] = "|cffb0b0b0Not completed|r",
-}
-
 local function BuildStoryItems(areaID)
     local items = {}
     local db = ns.db
@@ -337,19 +331,13 @@ local function BuildStoryItems(areaID)
             table.insert(items, { type = "story", story = story, done = done, total = total, started = started,
                 complete = complete, ignored = ignored, expanded = expanded })
             if expanded then
-                local nextFound = false
                 local index = 0
                 for _, step in ipairs(story.steps) do
                     local questID, state = ns:ResolveStep(step)
                     if questID then
                         index = index + 1
-                        local isNext = false
-                        if state ~= ns.STATE_DONE and not nextFound and not ns:IsQuestIgnored(questID) then
-                            nextFound = true
-                            isNext = true
-                        end
                         table.insert(items, { type = "step", questID = questID, state = state, index = index,
-                            isNext = isNext, step = step, story = story })
+                            step = step, story = story })
                     end
                 end
             end
@@ -391,7 +379,10 @@ local function BuildStoryItems(areaID)
     return items
 end
 
-local function stateIcon(state, isNext)
+--- Quest icon like the game's: yellow "?" ready to turn in, grey "?" in progress,
+-- yellow "!" can be picked up now, grey "!" not available yet.
+-- @return icon, desaturated, availability ("available" / "level" / "locked" for quests not started), required level
+function ns:GetQuestIcon(questID, state)
     if state == ns.STATE_DONE then
         return ICON_DONE, false
     elseif state == ns.STATE_READY then
@@ -399,7 +390,8 @@ local function stateIcon(state, isNext)
     elseif state == ns.STATE_ACTIVE then
         return ICON_ACTIVE, true
     end
-    return ICON_AVAILABLE, not isNext
+    local availability, level = ns:GetQuestAvailability(questID)
+    return ICON_AVAILABLE, availability ~= "available", availability, level
 end
 
 local function isInspected(item)
@@ -439,13 +431,13 @@ local function UpdateStoryRow(row, item)
             right = levels .. progressColor(item.done, item.total) .. item.done .. "/" .. item.total .. "|r",
         })
     elseif item.type == "step" or item.type == "side" then
-        local icon, desat = stateIcon(item.state, item.type == "side" or item.isNext)
+        local icon, desat, availability, reqLevel = ns:GetQuestIcon(item.questID, item.state)
         local ignored = ns:IsQuestIgnored(item.questID)
         local color = COLOR_WHITE
         if ignored or item.state == ns.STATE_DONE then
             color = COLOR_DONE
-        elseif item.type == "step" and not item.isNext and item.state == ns.STATE_TODO then
-            color = { 0.75, 0.75, 0.75 }
+        elseif availability and availability ~= "available" then
+            color = COLOR_LOCKED
         end
         local right = ""
         if ignored then
@@ -454,8 +446,10 @@ local function UpdateStoryRow(row, item)
             right = "|cff40ff40turn in|r"
         elseif item.state == ns.STATE_ACTIVE then
             right = "|cffffd100in log|r"
-        elseif item.isNext then
-            right = "|cffffd100next|r"
+        elseif availability == "level" then
+            right = "|cffff4040level " .. reqLevel .. "|r"
+        elseif availability == "available" and item.type == "step" then
+            right = "|cffffd100available|r"
         end
         SetRow(row, {
             indent = item.type == "step" and 18 or 6,
@@ -550,7 +544,7 @@ local function OnStoryRowEnter(row)
         if tag then
             GameTooltip:AddLine(ns:GetTagMarkup(tag, 14) .. " " .. ns:GetTagName(tag) .. " quest", 1, 1, 1)
         end
-        GameTooltip:AddLine(STATE_TEXT[item.state] or "")
+        GameTooltip:AddLine(ns:GetQuestStatusText(questID, item.state))
         if item.step and type(item.step) == "table" then
             GameTooltip:AddLine("Any one of these completes this step:", 0.8, 0.8, 0.8)
             for _, alt in ipairs(item.step) do

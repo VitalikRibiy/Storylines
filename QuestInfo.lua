@@ -32,7 +32,8 @@ local FACTION_NAMES = {
 
 local EMPTY = {}
 
---- @return table|nil { requiredLevel, tag, objectives, giver = {kind, id}, turnIn = {kind, id}, xp, reputation, items, pre }
+--- @return table|nil { requiredLevel, tag, objectives, giverKind, giverID, turnInKind, turnInID, xp, reputation,
+--   items, pre (all must be completed), preAny (any one must be completed) }
 function ns:GetQuestDetails(questID)
     local d = self.QuestDetails and self.QuestDetails[questID]
     if not d then
@@ -50,6 +51,7 @@ function ns:GetQuestDetails(questID)
         reputation = d[9] or EMPTY,
         items = d[10] or EMPTY,
         pre = d[11] or EMPTY,
+        preAny = d[12] or EMPTY,
     }
 end
 
@@ -128,15 +130,49 @@ function ns:GetStoryTagMarkup(story, size)
     return out
 end
 
+--- Whether this character can pick the quest up now, from the quest's real requirements.
+-- @return "available", "level" (prerequisites done, level too low; also returns the level) or "locked"
+function ns:GetQuestAvailability(questID)
+    local d = self.QuestDetails and self.QuestDetails[questID]
+    if not d then
+        return "available"
+    end
+    for _, pre in ipairs(d[11] or EMPTY) do
+        if self:IsQuestForPlayer(pre) and not self:IsQuestCompleted(pre) then
+            return "locked"
+        end
+    end
+    local relevant, met = false, false
+    for _, pre in ipairs(d[12] or EMPTY) do
+        if self:IsQuestForPlayer(pre) then
+            relevant = true
+            if self:IsQuestCompleted(pre) then
+                met = true
+                break
+            end
+        end
+    end
+    if relevant and not met then
+        return "locked"
+    end
+    local required = d[1] or 0
+    if required > (UnitLevel("player") or 1) then
+        return "level", required
+    end
+    return "available"
+end
+
 local nextQuests
 --- Quests that require this quest (from the prerequisite data), for "leads to".
 function ns:GetNextQuests(questID)
     if not nextQuests then
         nextQuests = {}
         for id, d in pairs(self.QuestDetails or EMPTY) do
-            for _, pre in ipairs(d[11] or EMPTY) do
-                nextQuests[pre] = nextQuests[pre] or {}
-                table.insert(nextQuests[pre], id)
+            for _, list in ipairs({ d[11] or EMPTY, d[12] or EMPTY }) do
+                for _, pre in ipairs(list) do
+                    nextQuests[pre] = nextQuests[pre] or {}
+                    table.insert(nextQuests[pre], id)
+                end
             end
         end
     end

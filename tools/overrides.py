@@ -8,6 +8,7 @@ quest ID in the chain (shown in brackets by `generate_data.py --report`).
 # Storyline key -> display name (when the automatic name is poor).
 STORY_NAMES = {
     6: "Northshire Valley",  # automatic name would be "Grape Manifest"
+    8286: "The Scepter of the Shifting Sands",  # the Ahn'Qiraj opening chain (31 steps)
 }
 
 # Storyline key -> AreaID to file it under (when the automatic zone is wrong).

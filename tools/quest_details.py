@@ -10,6 +10,7 @@ OUTPUT = os.path.join(ROOT, "Data", "QuestDetails.lua")
 
 # QuestieDB quest fields
 REQ_LEVEL, OBJECTIVES_TEXT, STARTED_BY, FINISHED_BY, REP_REWARD = 4, 8, 2, 3, 26
+PRE_GROUP, PRE_SINGLE = 12, 13
 # NPC fields
 NPC_NAME, NPC_SPAWNS, NPC_ZONE, NPC_SUBNAME = 1, 7, 9, 14
 # Object fields
@@ -54,6 +55,10 @@ def load_xp(text):
     return {qid: luatable.as_list(v) for qid, v in luatable.parse(body).items()}
 
 
+def id_list(value):
+    return [v for v in luatable.as_list(value) or [] if isinstance(v, int)]
+
+
 def first_ids(value, index):
     group = (value or {}).get(index) or {}
     return [v for v in luatable.as_list(group) or [] if isinstance(v, int)]
@@ -64,7 +69,6 @@ def write(ctx, fetch, used):
     resolve_zone = ctx["resolve_zone"]
     area_names, area_to_map, map_to_area = ctx["area_names"], ctx["area_to_map"], ctx["map_to_area"]
     dungeons = ctx["dungeons"]
-    prereqs = ctx["prereqs"]
 
     npcs = load_long_table(fetch("npcs"), "QuestieDB.npcData")
     objects = load_long_table(fetch("objects"), "QuestieDB.objectData")
@@ -126,7 +130,7 @@ def write(ctx, fetch, used):
         "",
         "-- [questID] = { requiredLevel, tag (1 Elite / 41 PvP / 62 Raid / 81 Dungeon / 84 Escort / 0 none),",
         "--   objectives, giverKind, giverID, turnInKind, turnInID, xp, {factionID, rep, ...}, {rewardItemIDs},",
-        "--   {prerequisite questIDs} }",
+        "--   {questIDs that must all be completed first}, {questIDs of which any one must be completed first} }",
         "-- Giver kinds: 1 NPC (ns.NPCs), 2 object (ns.Objects), 3 item (ns.ItemNames).",
         "ns.QuestDetails = {",
     ]
@@ -143,11 +147,14 @@ def write(ctx, fetch, used):
         item_ids = sorted(rewards.get(qid, []))
         for item_id in item_ids:
             used_items[item_id] = items[item_id].get(ITEM_NAME)
-        pre = sorted(p for p in prereqs.get(qid, ()) if p in used)
+        # Real requirements from the database (not the looser links used to group storylines).
+        pre_all = sorted({p for p in id_list(q.get(PRE_GROUP)) if p in used and p != qid})
+        pre_any = sorted({p for p in id_list(q.get(PRE_SINGLE)) if p in used and p != qid})
         quest_xp = (xp.get(qid) or [0, 0])[1] or 0
-        lines.append("[%d]={%d,%d,%s,%d,%d,%d,%d,%d,{%s},{%s},{%s}}," % (
+        lines.append("[%d]={%d,%d,%s,%d,%d,%d,%d,%d,{%s},{%s},{%s},{%s}}," % (
             qid, q.get(REQ_LEVEL) or 0, tag_of(qid, q), lua_str(objectives), g_kind, g_id, e_kind, e_id, quest_xp,
-            ",".join(map(str, reps)), ",".join(map(str, item_ids)), ",".join(map(str, pre))))
+            ",".join(map(str, reps)), ",".join(map(str, item_ids)), ",".join(map(str, pre_all)),
+            ",".join(map(str, pre_any))))
     lines.append("}")
 
     def loc_lua(loc):

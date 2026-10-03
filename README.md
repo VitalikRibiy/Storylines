@@ -12,8 +12,10 @@ zone has, which ones you skipped completely, and which quest in a chain you need
   `completed / total` storylines per zone. An arrow marks the zone you're in.
 - **Storyline list** for the selected zone, with a progress bar, level range, `done/total` count
   and a check mark plus strike-through for finished storylines.
-- **Click a storyline** to see its quests in order. Each quest shows whether it's completed, in
-  your quest log, ready to turn in, or the **next** quest to pick up.
+- **Click a storyline** to see its quests in order, one branch at a time. Each quest shows
+  whether it's completed, in your quest log, ready to turn in, **available** to pick up now,
+  waiting for a level, or still locked behind earlier quests. This uses each quest's real
+  requirements, the same way the game decides.
 - **Inspector**: click a storyline or quest to open a details panel next to the window.
   - *Storyline*: zone, level range, progress, XP left, the quest types it includes, where it
     starts (or the quest to continue with), and every quest in it.

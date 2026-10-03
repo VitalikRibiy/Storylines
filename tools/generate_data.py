@@ -158,6 +158,60 @@ def lua_str(s):
     return '"' + s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n") + '"'
 
 
+# --------------------------------------------------------------------------- ordering
+
+def chain_order(count, deps, sort_key):
+    """Topological order of steps 0..count-1 that finishes one branch before starting the next.
+
+    Prerequisites always come first. Among the steps that are ready, a successor of the most
+    recently placed step wins (depth-first), otherwise the lowest sort_key. Cycles in the data
+    are broken by placing the lowest remaining step.
+    """
+    succ = defaultdict(set)
+    for step, pre in deps.items():
+        for p in pre:
+            succ[p].add(step)
+    waiting = {step: set(deps.get(step, ())) for step in range(count)}
+    ready = {step for step in range(count) if not waiting[step]}
+    placed, order = set(), []
+    while len(order) < count:
+        if not ready:  # cycle
+            ready.add(min((s for s in range(count) if s not in placed), key=sort_key))
+        pick = None
+        for prev in reversed(order):
+            candidates = [s for s in succ[prev] if s in ready]
+            if candidates:
+                pick = min(candidates, key=sort_key)
+                break
+        if pick is None:
+            pick = min(ready, key=sort_key)
+        ready.discard(pick)
+        placed.add(pick)
+        order.append(pick)
+        for nxt in succ[pick]:
+            waiting[nxt].discard(pick)
+            if not waiting[nxt] and nxt not in placed:
+                ready.add(nxt)
+    return order
+
+
+def longest_path_depths(count, deps):
+    """Number of prerequisite steps on the longest path to each step (cycle-safe)."""
+    depth = {}
+
+    def visit(step, stack):
+        if step in depth:
+            return depth[step]
+        if step in stack:
+            return 0
+        depth[step] = 1 + max([visit(p, stack | {step}) for p in deps.get(step, ())] or [-1])
+        return depth[step]
+
+    for step in range(count):
+        visit(step, frozenset())
+    return depth
+
+
 # --------------------------------------------------------------------------- build
 
 def build(offline):
@@ -301,27 +355,19 @@ def build(offline):
             for a in alts:
                 step_of[a] = len(steps)
             steps.append(alts)
-        # Topological order over steps (prerequisites first, then quest level, then ID).
+        # Prerequisites of each step, as step indexes.
         deps = defaultdict(set)
         for qid in members:
             for p in prereqs.get(qid, ()):
                 if p in members and step_of[p] != step_of[qid]:
                     deps[step_of[qid]].add(step_of[p])
-        depth = {}
-
-        def get_depth(s, stack=()):
-            if s in depth:
-                return depth[s]
-            if s in stack:
-                return 0
-            depth[s] = 1 + max([get_depth(d, stack + (s,)) for d in deps[s]] or [-1])
-            return depth[s]
-
-        order = sorted(range(len(steps)), key=lambda s: (
-            get_depth(s), min(kept[q]["level"] for q in steps[s]), min(steps[s])))
-        ordered = [steps[s] for s in order]
-        final_steps = [s for s in range(len(steps)) if not any(s in deps[o] for o in range(len(steps)))]
-        return ordered, [steps[s] for s in final_steps]
+        order = chain_order(len(steps), deps, lambda s: (min(kept[q]["level"] for q in steps[s]), min(steps[s])))
+        depth = longest_path_depths(len(steps), deps)
+        # Ends of the chain (no later step depends on them), deepest first: used for the story name.
+        needed = set().union(*deps.values()) if deps else set()
+        finals = sorted((s for s in range(len(steps)) if s not in needed),
+                        key=lambda s: (-depth[s], -max(kept[q]["level"] for q in steps[s]), steps[s][0]))
+        return [steps[s] for s in order], [steps[s] for s in finals]
 
     zones = defaultdict(lambda: {"stories": [], "side": []})
     for members in groups.values():
@@ -339,7 +385,6 @@ def build(offline):
         zones[zone]["stories"].append({"key": story_key, "steps": ordered,
                                        "name": story_name(story_key, ordered, finals, kept)})
 
-    # Breadcrumbs whose target is a side quest stay out of the lists entirely.
     return {"kept": kept, "zones": zones, "dungeons": dungeons, "area_names": area_names,
             "area_to_map": area_to_map, "map_to_area": map_to_area, "skipped": skipped,
             "breadcrumbs": breadcrumbs, "quests": quests, "prereqs": prereqs, "resolve_zone": resolve_zone}
@@ -353,10 +398,8 @@ GENERIC_PREFIX = re.compile(r"^(Return to|Report to|Report back|Speak (with|to)|
 def story_name(key, ordered, finals, kept):
     if key in overrides.STORY_NAMES:
         return overrides.STORY_NAMES[key]
-    # Prefer the final quest of the longest path; fall back past "Return to ..." style names.
-    candidates = [s[0] for s in reversed(ordered)]
-    finals_first = [s[0] for s in finals]
-    for qid in sorted(finals_first, key=lambda q: candidates.index(q)) + candidates:
+    # Prefer the end of the longest branch; fall back past "Return to ..." style names.
+    for qid in [s[0] for s in finals] + [s[0] for s in reversed(ordered)]:
         name = kept[qid]["name"]
         if not GENERIC_PREFIX.search(name):
             return re.sub(r"\s*\((Part|Pt\.?) ?[IVX\d]+\)$|\s+(Part|Pt\.?) ?[IVX\d]+$", "", name)

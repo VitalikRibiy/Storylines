@@ -7,9 +7,6 @@ local WIDTH = 340
 local PADDING = 14
 local LINE_HEIGHT = 18
 
-local ICON_DONE = "Interface\\RaidFrame\\ReadyCheck-Ready"
-local ICON_ACTIVE = "Interface\\GossipFrame\\ActiveQuestIcon"
-local ICON_AVAILABLE = "Interface\\GossipFrame\\AvailableQuestIcon"
 local ICON_PIN = "Interface\\Icons\\INV_Misc_Map_01"
 
 local panel
@@ -19,8 +16,21 @@ local STATUS_TEXT = {
     [ns.STATE_DONE] = "|cff40ff40Completed|r",
     [ns.STATE_READY] = "|cff40ff40Ready to turn in|r",
     [ns.STATE_ACTIVE] = "|cffffd100In your quest log|r",
-    [ns.STATE_TODO] = "|cffb0b0b0Not completed|r",
 }
+
+--- One-line status of a quest for this character (shared by the list tooltips and the inspector).
+function ns:GetQuestStatusText(questID, state)
+    if STATUS_TEXT[state] then
+        return STATUS_TEXT[state]
+    end
+    local availability, level = self:GetQuestAvailability(questID)
+    if availability == "available" then
+        return "|cffffd100Available - you can pick it up now|r"
+    elseif availability == "level" then
+        return "|cffff4040Available at level " .. level .. "|r"
+    end
+    return "|cffb0b0b0Not available yet - complete the required quests first|r"
+end
 
 ---------------------------------------------------------------------------
 -- Layout: a scrollable column of text blocks and clickable lines
@@ -142,15 +152,6 @@ end
 -- Shared bits
 ---------------------------------------------------------------------------
 
-local function stateIcon(state, highlight)
-    if state == ns.STATE_DONE then
-        return ICON_DONE, false
-    elseif state == ns.STATE_READY or state == ns.STATE_ACTIVE then
-        return ICON_ACTIVE, state == ns.STATE_ACTIVE
-    end
-    return ICON_AVAILABLE, not highlight
-end
-
 --- "[18] Quest name <type icon>" with the level colored by difficulty.
 function ns:FormatQuestLine(questID, prefix, state)
     local level = self:GetQuestLevel(questID)
@@ -184,7 +185,7 @@ end
 
 local function AddQuestLine(questID, prefix, indent)
     local _, state = ns:ResolveStep(questID)
-    local icon, desat = stateIcon(state, true)
+    local icon, desat = ns:GetQuestIcon(questID, state)
     return AddLine({
         icon = icon,
         desaturate = desat,
@@ -258,17 +259,23 @@ local function RenderStory(story)
     AddText(("Progress: %d / %d quests   %s"):format(done, total, status), "GameFontHighlight", nil, 0, 2)
 
     local xpLeft = 0
-    local first, nextQuest
+    local first, inLog, available, unfinished
     for _, step in ipairs(story.steps) do
         local questID, state = ns:ResolveStep(step)
         if questID then
             first = first or questID
-            if state ~= ns.STATE_DONE then
+            if state ~= ns.STATE_DONE and not ns:IsQuestIgnored(questID) then
                 xpLeft = xpLeft + ns:GetQuestXP(questID)
-                nextQuest = nextQuest or questID
+                unfinished = unfinished or questID
+                if state ~= ns.STATE_TODO then
+                    inLog = inLog or questID
+                elseif not available and ns:GetQuestAvailability(questID) ~= "locked" then
+                    available = questID
+                end
             end
         end
     end
+    local nextQuest = inLog or available or unfinished
     if xpLeft > 0 then
         AddText(("Experience left: %s XP"):format(ns:FormatNumber(xpLeft)), "GameFontHighlight", nil, 0, 2)
     end
@@ -284,7 +291,7 @@ local function RenderStory(story)
     local startQuest = nextQuest or first
     local details = startQuest and ns:GetQuestDetails(startQuest)
     if details and details.giverKind > 0 then
-        AddHeader(nextQuest and nextQuest ~= first and "Continue with" or "Starts with")
+        AddHeader((done > 0 or inLog) and nextQuest and "Continue with" or "Starts with")
         AddQuestLine(startQuest)
         AddGiver(details.giverKind, details.giverID, "Quest giver")
     end
@@ -339,7 +346,7 @@ local function RenderQuest(questID, story)
             .. ((tag == ns.TAG_ELITE or tag == ns.TAG_DUNGEON or tag == ns.TAG_RAID) and " |cff909090- bring a group|r" or ""),
             "GameFontHighlight", nil, 0, 2)
     end
-    AddText("Status: " .. (STATUS_TEXT[state] or ""), "GameFontHighlight", nil, 0, 2)
+    AddText("Status: " .. ns:GetQuestStatusText(questID, state), "GameFontHighlight", nil, 0, 2)
     if ns:IsQuestIgnored(questID) then
         AddText("You are ignoring this quest.", "GameFontHighlightSmall", { 1, 0.4, 0.4 }, 0, 2)
     end
@@ -428,16 +435,26 @@ local function RenderQuest(questID, story)
         end
     end
 
-    local pre = {}
-    for _, id in ipairs(details.pre or {}) do
-        if ns:IsQuestForPlayer(id) then
-            pre[#pre + 1] = id
+    local function forPlayer(list)
+        local out = {}
+        for _, id in ipairs(list or {}) do
+            if ns:IsQuestForPlayer(id) then
+                out[#out + 1] = id
+            end
         end
+        return out
     end
-    if #pre > 0 then
+    local preAll, preAny = forPlayer(details.pre), forPlayer(details.preAny)
+    if #preAll > 0 or #preAny > 0 then
         AddHeader("Requires")
-        for _, id in ipairs(pre) do
+        for _, id in ipairs(preAll) do
             AddQuestLine(id)
+        end
+        if #preAny > 1 then
+            AddText("One of:", "GameFontHighlightSmall", { 0.7, 0.7, 0.7 }, 4, 1)
+        end
+        for _, id in ipairs(preAny) do
+            AddQuestLine(id, nil, #preAny > 1 and 8 or 0)
         end
     end
     local nextList = {}

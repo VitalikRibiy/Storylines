@@ -420,6 +420,39 @@ def main():
           "inspecting a quest from another storyline shows that storyline")
     lua_do("local ns = ... ns:CloseInspector()")
 
+    print("Quest availability:")
+    # Duskwood's Sven chain (untouched by the tests above): 95 -> 230 -> 262 -> 265, all required level 20.
+    lua_do("""local ns = ...
+        __level = 25
+        __completed[95] = true
+        ns.__fire('QUEST_LOG_UPDATE')""")
+    check(lua_do("local ns = ... return ns:GetQuestAvailability(230)") == "available", "230 is available once 95 is done")
+    check(lua_do("local ns = ... return ns:GetQuestAvailability(262)") == "locked", "262 is locked until 230 is done")
+    lua_do("__level = 15")
+    avail = lua_do("local ns = ... local a, l = ns:GetQuestAvailability(230) return a .. ':' .. tostring(l)")
+    check(avail == "level:20", "at level 15, 230 needs level 20 (%s)" % avail)
+    lua_do("__level = 25")
+    lua_do("""local ns = ...
+        ns.db.hideCompleted = false
+        ns:ShowUI(10)
+        for _, row in ipairs(StorylinesFrame.storyList.rows) do
+            if row:IsShown() and row.item and row.item.type == 'story' and row.item.story.name == 'Morbent Fel' then
+                row:GetScript('OnClick')(row, 'LeftButton') break
+            end
+        end""")
+    rows = lua_do("""local ns = ...
+        local out = {}
+        for _, row in ipairs(StorylinesFrame.storyList.rows) do
+            if row:IsShown() and row.item and row.item.type == 'step' and row.item.index <= 3 then
+                out[#out + 1] = row.item.questID .. '=' .. row.right:GetText()
+            end
+        end
+        return table.concat(out, ' ')""")
+    check("230=|cffffd100available|r" in rows and "262=" in rows and "262=|cffffd100available" not in rows,
+          "the list marks only the quest you can pick up now as available (%s)" % rows)
+    status = lua_do("local ns = ... return ns:GetQuestStatusText(262, ns.STATE_TODO)")
+    check("Not available yet" in status, "locked quests explain why in their status")
+
     print("Data sanity:")
     bad = lua_do("""local ns = ...
         local missing = 0

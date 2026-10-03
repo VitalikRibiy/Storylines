@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Debug helper: print the steps of generated storylines. Usage: show_story.py <zone name or story key>..."""
-import re, sys, os
+import os
+import re
+import signal
+import sys
+
+signal.signal(signal.SIGPIPE, signal.SIG_DFL)  # allow piping into head
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 text = open(os.path.join(ROOT, "Data", "Storylines.lua"), encoding="utf-8").read()
 quests = {int(m.group(1)): (m.group(2), int(m.group(3)), int(m.group(4)))
