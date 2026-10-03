@@ -23,6 +23,7 @@ from collections import Counter, defaultdict
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import luatable  # noqa: E402
 import overrides  # noqa: E402
+import quest_details  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CACHE = os.path.join(ROOT, "tools", ".cache")
@@ -37,6 +38,11 @@ SOURCES = {
     "subZones": QUESTIEDB + "support/Forever/Zones/subZoneToParentZone.lua",
     "dungeons": QUESTIEDB + "support/Forever/Zones/dungeons.lua",
     "blacklist": QUESTIE + "Database/Corrections/QuestieQuestBlacklist.lua",
+    "tags": QUESTIE + "Database/Corrections/questTagInfoCorrections.lua",
+    "npcs": QUESTIEDB + "data/Forever/foreverNpcDB.lua",
+    "objects": QUESTIEDB + "data/Forever/foreverObjectDB.lua",
+    "items": QUESTIEDB + "data/Forever/foreverItemDB.lua",
+    "xp": QUESTIEDB + "support/Forever/QuestXP/xpDB-classic.lua",
 }
 
 # QuestieDB quest field indexes (see QuestieDB src/meta/questMeta.lua)
@@ -335,7 +341,9 @@ def build(offline):
                                        "name": story_name(story_key, ordered, finals, kept)})
 
     # Breadcrumbs whose target is a side quest stay out of the lists entirely.
-    return kept, zones, dungeons, area_names, area_to_map, skipped, breadcrumbs
+    return {"kept": kept, "zones": zones, "dungeons": dungeons, "area_names": area_names,
+            "area_to_map": area_to_map, "map_to_area": map_to_area, "skipped": skipped,
+            "breadcrumbs": breadcrumbs, "quests": quests, "prereqs": prereqs, "resolve_zone": resolve_zone}
 
 
 GENERIC_PREFIX = re.compile(r"^(Return to|Report to|Report back|Speak (with|to)|Talk to|Seek out|Back to|"
@@ -358,7 +366,7 @@ def story_name(key, ordered, finals, kept):
 
 # --------------------------------------------------------------------------- output
 
-def write_lua(kept, zones, dungeons, area_names, area_to_map, stats):
+def used_quests(zones):
     used = set()
     for z in zones.values():
         for story in z["stories"]:
@@ -366,6 +374,11 @@ def write_lua(kept, zones, dungeons, area_names, area_to_map, stats):
                 used.update(step)
         for step in z["side"]:
             used.update(step)
+    return used
+
+
+def write_lua(kept, zones, dungeons, area_names, area_to_map, stats):
+    used = used_quests(zones)
 
     def zone_name(area):
         if area in dungeons:
@@ -430,13 +443,16 @@ def main():
     ap.add_argument("--report", action="store_true", help="print a per-zone summary")
     args = ap.parse_args()
 
-    kept, zones, dungeons, area_names, area_to_map, skipped, breadcrumbs = build(args.offline)
+    ctx = build(args.offline)
+    kept, zones, dungeons, area_names = ctx["kept"], ctx["zones"], ctx["dungeons"], ctx["area_names"]
+    area_to_map, skipped, breadcrumbs = ctx["area_to_map"], ctx["skipped"], ctx["breadcrumbs"]
     n_stories = sum(len(z["stories"]) for z in zones.values())
     n_side = sum(len(z["side"]) for z in zones.values())
     write_lua(kept, zones, dungeons, area_names, area_to_map, (n_stories, n_side, len(zones)))
     print("Wrote %s: %d storylines, %d side quests, %d zones (%d breadcrumbs left out)" % (
         os.path.relpath(OUTPUT, ROOT), n_stories, n_side, len(zones), len(breadcrumbs)))
     print("Skipped quests:", dict(skipped))
+    quest_details.write(ctx, lambda key: fetch(key, args.offline), used_quests(zones))
     if args.report:
         def name(a):
             return dungeons[a]["name"] if a in dungeons else area_names.get(a, str(a))

@@ -400,16 +400,21 @@ local function stateIcon(state, isNext)
     return ICON_AVAILABLE, not isNext
 end
 
-local function questLine(questID, prefix)
-    local level = ns:GetQuestLevel(questID)
-    local levelText = level > 0 and ("|cff909090[" .. level .. "]|r ") or ""
-    return (prefix or "") .. levelText .. ns:GetQuestName(questID)
+local function isInspected(item)
+    local view = ns:GetInspected()
+    if item.type == "story" then
+        return view.kind == "story" and view.story == item.story
+    end
+    return view.kind == "quest" and view.questID == item.questID
 end
 
 local function UpdateStoryRow(row, item)
     if item.type == "story" then
         local low, high = ns:GetStoryLevelRange(item.story)
-        local levels = low and ("|cff909090" .. (low == high and ("Lvl " .. low) or ("Lvl " .. low .. "-" .. high)) .. "|r   ") or ""
+        local levels = ""
+        if low then
+            levels = "|cff909090Lvl|r " .. (low == high and ns:ColorLevel(low) or (ns:ColorLevel(low) .. "|cff909090-|r" .. ns:ColorLevel(high))) .. "   "
+        end
         local icon, desat
         if item.ignored then
             icon, desat = ICON_IGNORED, false
@@ -423,10 +428,12 @@ local function UpdateStoryRow(row, item)
         SetRow(row, {
             icon = icon,
             desaturate = desat,
-            text = (item.expanded and "- " or "+ ") .. item.story.name .. (item.ignored and " |cffff6060(ignored)|r" or ""),
+            text = (item.expanded and "- " or "+ ") .. item.story.name .. ns:GetStoryTagMarkup(item.story, 14)
+                .. (item.ignored and " |cffff6060(ignored)|r" or ""),
             font = "GameFontNormal",
             color = (item.complete or item.ignored) and COLOR_DONE or COLOR_GOLD,
             strike = item.complete,
+            selected = isInspected(item),
             right = levels .. progressColor(item.done, item.total) .. item.done .. "/" .. item.total .. "|r",
         })
     elseif item.type == "step" or item.type == "side" then
@@ -452,10 +459,11 @@ local function UpdateStoryRow(row, item)
             indent = item.type == "step" and 18 or 6,
             icon = ignored and ICON_IGNORED or icon,
             desaturate = desat and not ignored,
-            text = questLine(item.questID, item.type == "step" and (item.index .. ". ") or nil),
+            text = ns:FormatQuestLine(item.questID, item.type == "step" and (item.index .. ". ") or nil, item.state),
             font = "GameFontHighlightSmall",
             color = color,
             strike = item.state == ns.STATE_DONE,
+            selected = isInspected(item),
             right = right,
         })
     elseif item.type == "sideHeader" then
@@ -485,7 +493,14 @@ local function OnStoryRowClick(row, button)
             ns:Print((ns.db.ignoredStories[key] and "Ignoring storyline %s. Tick \"Show ignored\" to see it again."
                 or "Storyline %s is no longer ignored."):format("|cffffd100" .. item.story.name .. "|r"))
         else
-            expandedStories[item.story.key] = not expandedStories[item.story.key] or nil
+            local view = ns:GetInspected()
+            if view.kind == "story" and view.story == item.story then
+                -- Second click on the inspected storyline collapses it again.
+                expandedStories[item.story.key] = not expandedStories[item.story.key] or nil
+            else
+                expandedStories[item.story.key] = true
+            end
+            ns:InspectStory(item.story)
         end
         ns:RefreshUI(true)
     elseif item.type == "step" or item.type == "side" then
@@ -495,6 +510,8 @@ local function OnStoryRowClick(row, button)
             ns:RefreshUI(true)
         elseif IsShiftKeyDown() and ChatEdit_GetActiveWindow and ChatEdit_GetActiveWindow() then
             ChatEdit_GetActiveWindow():Insert(("[%s] (%d)"):format(ns:GetQuestName(item.questID), item.questID))
+        else
+            ns:InspectQuest(item.questID, item.story)
         end
     elseif item.type == "sideHeader" then
         sideCollapsed = not sideCollapsed
@@ -515,7 +532,7 @@ local function OnStoryRowEnter(row)
             GameTooltip:AddLine("Storyline complete!", 0.25, 1, 0.25)
         end
         GameTooltip:AddLine(" ")
-        GameTooltip:AddLine("Click to show the quests.", 0.6, 0.6, 0.6)
+        GameTooltip:AddLine("Click to inspect the storyline and show its quests.", 0.6, 0.6, 0.6)
         GameTooltip:AddLine(item.ignored and "Right-click to stop ignoring this storyline."
             or "Right-click to ignore this storyline.", 0.6, 0.6, 0.6)
         GameTooltip:Show()
@@ -525,7 +542,12 @@ local function OnStoryRowEnter(row)
         GameTooltip:SetText(ns:GetQuestName(questID), 1, 0.82, 0)
         local level = ns:GetQuestLevel(questID)
         if level > 0 then
-            GameTooltip:AddLine("Level " .. level, 1, 1, 1)
+            local r, g, b = ns:GetLevelColor(level)
+            GameTooltip:AddLine("Level " .. level .. " - " .. ns:GetDifficultyName(level), r, g, b)
+        end
+        local tag = ns:GetQuestTag(questID)
+        if tag then
+            GameTooltip:AddLine(ns:GetTagMarkup(tag, 14) .. " " .. ns:GetTagName(tag) .. " quest", 1, 1, 1)
         end
         GameTooltip:AddLine(STATE_TEXT[item.state] or "")
         if item.step and type(item.step) == "table" then
@@ -538,6 +560,7 @@ local function OnStoryRowEnter(row)
         end
         GameTooltip:AddLine("Quest ID: " .. questID, 0.6, 0.6, 0.6)
         GameTooltip:AddLine(" ")
+        GameTooltip:AddLine("Click for quest details.", 0.6, 0.6, 0.6)
         GameTooltip:AddLine(ns:IsQuestIgnored(questID) and "Right-click to count this quest again."
             or "Right-click to ignore this quest (if it is not available to you).", 0.6, 0.6, 0.6)
         GameTooltip:Show()
@@ -723,7 +746,7 @@ function ns:SelectArea(areaID)
     end
 end
 
-function ns:RefreshUI(keepStoryOffset)
+function ns:RefreshUI(keepStoryOffset, skipInspector)
     if not frame or not frame:IsShown() then
         return
     end
@@ -757,6 +780,9 @@ function ns:RefreshUI(keepStoryOffset)
         frame.progressBar:SetStatusBarColor(0.95, 0.75, 0.1)
     end
     frame.storyList:SetItems(BuildStoryItems(areaID), keepStoryOffset)
+    if not skipInspector and self.RefreshInspector then
+        self:RefreshInspector(true)
+    end
 end
 
 function ns:ShowUI(areaID)

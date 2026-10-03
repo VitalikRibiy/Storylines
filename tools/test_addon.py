@@ -30,7 +30,21 @@ local function newObject(kind, name)
     function methods:GetWidth() return self.__width end
     function methods:SetSize(w, h) self.__width, self.__height = w, h end
     function methods:CreateTexture() return newObject("Texture") end
-    function methods:CreateFontString() return newObject("FontString") end
+    function methods:CreateFontString()
+        local fs = newObject("FontString")
+        fs.__parent = self
+        self.__regions = self.__regions or {}
+        table.insert(self.__regions, fs)
+        return fs
+    end
+    function methods:IsVisible()
+        local o = self
+        while o do
+            if not o.__shown then return false end
+            o = o.__parent
+        end
+        return true
+    end
     function methods:SetText(t) self.__text = t or "" end
     function methods:GetText() return self.__text end
     function methods:GetStringWidth() return #self.__text * 6 end
@@ -56,6 +70,11 @@ end
 function CreateFrame(kind, name, parent, template)
     local f = newObject(kind, name)
     f.__shown = true
+    f.__parent = parent
+    if parent then
+        parent.__children = parent.__children or {}
+        table.insert(parent.__children, f)
+    end
     if name then _G[name] = f end
     return f
 end
@@ -85,6 +104,26 @@ __completed, __inLog, __ready = {}, {}, {}
 __faction, __race, __map = "Alliance", 1, 1436
 function UnitFactionGroup() return __faction end
 function UnitRace() return "Race", "Race", __race end
+__level = 20
+function UnitLevel() return __level end
+function UnitName() return "Tester" end
+function UnitClass() return "Warrior" end
+function UnitSex() return 2 end
+__waypoint = nil
+UiMapPoint = { CreateFromCoordinates = function(map, x, y) return { map = map, x = x, y = y } end }
+-- Collects the visible text of a frame tree (for checking what the inspector shows).
+function __visibleText(frame)
+    local out = {}
+    local function walk(f)
+        if not f.__shown then return end
+        for _, r in ipairs(f.__regions or {}) do
+            if r.__shown and r.__text ~= "" then out[#out + 1] = r.__text end
+        end
+        for _, c in ipairs(f.__children or {}) do walk(c) end
+    end
+    walk(frame)
+    return table.concat(out, "\n")
+end
 C_QuestLog = {
     IsQuestFlaggedCompleted = function(id) return __completed[id] == true end,
     IsOnQuest = function(id) return __inLog[id] == true end,
@@ -97,6 +136,7 @@ local mapParents = { [1436] = 1415, [1429] = 1415, [1411] = 1414, [9999] = 1436 
 C_Map = {
     GetBestMapForUnit = function() return __map end,
     GetMapInfo = function(id) return mapNames[id] and { name = mapNames[id], parentMapID = mapParents[id] or 0 } end,
+    SetUserWaypoint = function(point) __waypoint = point end,
 }
 """
 
@@ -273,6 +313,64 @@ def main():
     lua_do("local ns = ... ns.__fire('ZONE_CHANGED_NEW_AREA'); ns.__fire('QUEST_LOG_UPDATE')")
     check(lua_do("local ns = ... return ns.selectedArea") == 40, "follows the player's zone on zone change")
     lua_do("local ns = ... SlashCmdList.STORYLINES('help'); SlashCmdList.STORYLINES('minimap'); Storylines_OnAddonCompartmentEnter(nil, StorylinesMinimapButton)")
+
+    print("Levels, quest types and inspector:")
+    lua_do("local ns = ... ns:ShowUI(40)")
+    colors = lua_do("""local ns = ...
+        __level = 20
+        local function hex(level) local r, g, b = ns:GetLevelColor(level) return ('%02x%02x%02x'):format(r * 255, g * 255, b * 255) end
+        return table.concat({ hex(26), hex(23), hex(20), hex(14), hex(5) }, ',')""")
+    check(colors == "ff1919,ff7f3f,ffd100,3fbf3f,7f7f7f",
+          "difficulty colors red/orange/yellow/green/gray at level 20 (%s)" % colors)
+    check(lua_do("local ns = ... return ns:GetQuestTag(166)") == 81, "VanCleef quest (166) is tagged Dungeon")
+    check(lua_do("local ns = ... return ns:GetQuestTag(176)") == 1, "Wanted: Hogger (176) is tagged Elite")
+    line = lua_do("local ns = ... __level = 17 local l = ns:FormatQuestLine(166, '8. ', ns.STATE_TODO) __level = 20 return l")
+    check("|cffff1919[22]|r" in line and "INV_Misc_Key_03" in line,
+          "quest line has a level colored by difficulty and a dungeon icon (%s)" % line)
+    # Click the Defias storyline: it expands and opens in the inspector.
+    lua_do("""local ns = ...
+        ns.db.hideCompleted = false
+        ns.db.showSide = true
+        ns:RefreshUI()
+        for _, row in ipairs(StorylinesFrame.storyList.rows) do
+            if row.item and row.item.type == 'story' and row.item.story.name == 'The Defias Brotherhood' then
+                row:GetScript('OnClick')(row, 'LeftButton')
+                break
+            end
+        end""")
+    check(lua.eval("StorylinesInspector ~= nil and StorylinesInspector:IsShown()"), "clicking a storyline opens the inspector")
+    story_text = lua.eval("__visibleText(StorylinesInspector)")
+    print("   " + story_text.replace("\n", "\n   ")[:900])
+    check("Levels:" in story_text and "Starts with" in story_text and "Gryan Stoutmantle" in story_text,
+          "storyline overview shows levels, start and quest giver")
+    check("Dungeon" in story_text, "storyline overview lists its dungeon quest type")
+    # Click the last step (VanCleef) in the story list to inspect the quest.
+    lua_do("""local ns = ...
+        for _, row in ipairs(StorylinesFrame.storyList.rows) do
+            if row.item and row.item.questID == 166 then row:GetScript('OnClick')(row, 'LeftButton') break end
+        end""")
+    quest_text = lua.eval("__visibleText(StorylinesInspector)")
+    print("   " + quest_text.replace("\n", "\n   "))
+    for needle, label in (("Kill Edwin VanCleef", "objectives"), ("Requires level 14", "required level"),
+                          ("Dungeon quest", "quest type"), ("Westfall (56.3, 47.5)", "giver location"),
+                          ("+500|r Stormwind", "reputation reward"), ("Tunic of Westfall", "reward items"),
+                          ("2,600 XP", "experience"), ("Quest 8 of 8", "position in storyline")):
+        check(needle in quest_text, "quest details show " + label)
+    # Click the giver location to set a waypoint.
+    lua_do("""local ns = ...
+        local function walk(f)
+            for _, c in ipairs(f.__children or {}) do
+                if c.text and c.text.__text and c.text.__text:find('56.3') and c:IsVisible() then
+                    c:GetScript('OnClick')(c) return true
+                end
+                if walk(c) then return true end
+            end
+        end
+        walk(StorylinesInspector)""")
+    wp = lua.eval("__waypoint")
+    check(wp is not None and wp["map"] == 1436 and abs(wp["x"] - 0.563) < 1e-6, "clicking the location sets a map waypoint")
+    lua_do("local ns = ... ns:CloseInspector()")
+    check(not lua.eval("StorylinesInspector:IsShown()"), "inspector closes")
 
     print("Data sanity:")
     bad = lua_do("""local ns = ...

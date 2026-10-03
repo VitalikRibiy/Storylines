@@ -14,6 +14,17 @@ zone has, which ones you skipped completely, and which quest in a chain you need
   and a check mark plus strike-through for finished storylines.
 - **Click a storyline** to see its quests in order. Each quest shows whether it's completed, in
   your quest log, ready to turn in, or the **next** quest to pick up.
+- **Inspector**: click a storyline or quest to open a details panel next to the window.
+  - *Storyline*: zone, level range, progress, XP left, the quest types it includes, where it
+    starts (or the quest to continue with), and every quest in it.
+  - *Quest*: level and required level, quest type, status, objectives, quest giver and turn-in
+    NPC with map coordinates, rewards (XP for your level, reputation, items with tooltips), and
+    the quests it requires and leads to. Click through these to move along the chain.
+  - Click a location to place a map waypoint (or a TomTom waypoint if you use TomTom).
+- **Quest levels are colored by difficulty**, the same way the game does it: red, orange,
+  yellow, green and gray, relative to your character's level.
+- **Quest type icons** for Dungeon, Raid, Elite, PvP and Escort quests, on quests and on the
+  storylines that contain them.
 - **Side quests**: quests that aren't part of any chain, listed separately with their own counter.
 - Only shows quests your **faction and race** can actually do.
 - **Chat messages** when you turn in a storyline quest (`Storyline progress: The Defias
@@ -49,7 +60,10 @@ quest database of [QuestieDB](https://github.com/Questie/QuestieDB), which has a
 Forever data set. It also uses [Questie](https://github.com/Questie/Questie)'s list of
 unobtainable quests.
 
-`tools/generate_data.py` turns that database into `Data/Storylines.lua`:
+`tools/generate_data.py` turns that database into `Data/Storylines.lua` (the storylines) and
+`Data/QuestDetails.lua` (objectives, quest givers with coordinates, quest types, XP and rewards
+for the inspector). Quest types come from Questie's tag list; any quest set in a dungeon, raid
+or battleground also gets that type.
 
 1. It keeps normal zone quests. It leaves out repeatable, class and profession quests,
    placeholder quests and quests Questie marks as unobtainable.
@@ -72,7 +86,7 @@ it does, regenerating the data adds them.
 ### Regenerating the data
 
 ```sh
-python3 tools/generate_data.py            # downloads the latest QuestieDB data and rebuilds Data/Storylines.lua
+python3 tools/generate_data.py            # downloads the latest QuestieDB data and rebuilds both data files
 python3 tools/generate_data.py --report   # also prints every zone's storylines with their keys
 python3 tools/show_story.py Westfall      # shows the quests of each storyline in a zone (or by quest ID)
 ```
@@ -80,7 +94,8 @@ python3 tools/show_story.py Westfall      # shows the quests of each storyline i
 ### Tests
 
 `tools/test_addon.py` loads the addon in Lua 5.1 with a mocked game API. It checks zone
-detection, progress tracking, faction/race filtering, completion messages and the UI.
+detection, progress tracking, faction/race filtering, completion messages, level colors,
+quest types, the inspector and the UI.
 
 ```sh
 pip install lupa

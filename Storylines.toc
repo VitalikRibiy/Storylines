@@ -2,7 +2,7 @@
 ## Title: Storylines
 ## Notes: Retail-style zone storylines for WoW Forever: see every quest chain in a zone and cross them off as you complete them.
 ## Author: VitalikRibiy
-## Version: 0.1.0
+## Version: 0.2.0
 ## Category: Quests
 ## SavedVariables: StorylinesDB
 ## IconTexture: Interface\Icons\INV_Misc_Book_09
@@ -11,6 +11,9 @@
 ## AddonCompartmentFuncOnLeave: Storylines_OnAddonCompartmentLeave
 
 Data\Storylines.lua
+Data\QuestDetails.lua
 Core.lua
+QuestInfo.lua
 UI.lua
+Inspector.lua
 Minimap.lua
