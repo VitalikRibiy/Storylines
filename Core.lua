@@ -126,17 +126,27 @@ end
 
 local playerFaction, playerRace
 local completedCache = {}
+local progressCache = {} -- story -> { done, total, started }; cleared whenever quest state may change
 
 function ns:UpdatePlayerInfo()
     local faction = UnitFactionGroup("player")
     playerFaction = (faction == "Alliance" and 1) or (faction == "Horde" and 2) or 0
     playerRace = select(3, UnitRace("player"))
+    self:InvalidateProgress()
+end
+
+--- Forget cached storyline progress. Call after anything that changes quest state or what is counted.
+function ns:InvalidateProgress()
+    wipe(progressCache)
 end
 
 function ns:IsQuestForPlayer(questID)
     local q = self.Quests[questID]
     if not q then
         return false
+    end
+    if not playerFaction then
+        self:UpdatePlayerInfo()
     end
     if q[3] ~= 0 and playerFaction ~= 0 and q[3] ~= playerFaction then
         return false
@@ -224,6 +234,10 @@ end
 --- Progress of a story for the current character.
 -- @return done, total, started (true when a step is done or in the quest log)
 function ns:GetStoryProgress(story)
+    local cached = progressCache[story]
+    if cached then
+        return cached[1], cached[2], cached[3]
+    end
     local done, total, started = 0, 0, false
     for _, step in ipairs(story.steps) do
         local questID, state = self:ResolveStep(step)
@@ -237,12 +251,18 @@ function ns:GetStoryProgress(story)
             end
         end
     end
+    progressCache[story] = { done, total, started }
     return done, total, started
 end
 
-function ns:IsStoryComplete(story)
-    local done, total = self:GetStoryProgress(story)
-    return total > 0 and done == total
+function ns:SetQuestIgnored(questID, ignored)
+    self.db.ignoredQuests[questID] = ignored or nil
+    self:InvalidateProgress()
+end
+
+function ns:SetStoryIgnored(story, ignored)
+    self.db.ignoredStories[story.key] = ignored or nil
+    self:InvalidateProgress()
 end
 
 --- Stories of a zone that apply to the current character (faction, race), in display order.
@@ -282,8 +302,9 @@ end
 function ns:GetZoneProgress(areaID)
     local storiesDone, storiesTotal = 0, 0
     for _, story in ipairs(self:GetZoneStories(areaID)) do
+        local done, total = self:GetStoryProgress(story)
         storiesTotal = storiesTotal + 1
-        if self:IsStoryComplete(story) then
+        if done == total then
             storiesDone = storiesDone + 1
         end
     end
@@ -339,7 +360,28 @@ function ns:FindAreaByName(name)
             self:GetZoneName(areaID)
         end
     end
-    return self.areaByName[name:lower()]
+    name = name:lower()
+    if self.areaByName[name] then
+        return self.areaByName[name]
+    end
+    -- Otherwise accept an unambiguous start of a zone name ("westf" -> Westfall).
+    -- @return areaID, or nil plus the matching zone names when the name is ambiguous
+    local found, matches = nil, {}
+    for zoneName, areaID in pairs(self.areaByName) do
+        if zoneName:sub(1, #name) == name and not matches[areaID] then
+            matches[areaID] = true
+            found = found and -1 or areaID
+        end
+    end
+    if found ~= -1 then
+        return found
+    end
+    local names = {}
+    for areaID in pairs(matches) do
+        names[#names + 1] = self:GetZoneName(areaID)
+    end
+    table.sort(names)
+    return nil, names
 end
 
 function ns:GetCurrentArea()
@@ -365,6 +407,7 @@ end
 
 function ns:OnQuestTurnedIn(questID)
     completedCache[questID] = true
+    self:InvalidateProgress()
     local stories = self.storiesByQuest[questID]
     if not stories or not self.db.announce or not self:IsQuestForPlayer(questID) then
         return
@@ -401,6 +444,7 @@ events:RegisterEvent("QUEST_REMOVED")
 events:RegisterEvent("QUEST_LOG_UPDATE")
 events:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
+events:RegisterEvent("PLAYER_LEVEL_UP") -- difficulty colors and XP depend on the level
 
 local refreshPending = false
 local function requestRefresh()
@@ -436,6 +480,8 @@ events:SetScript("OnEvent", function(_, event, arg1)
             ns:OnZoneChanged()
         end
     else
+        -- QUEST_ACCEPTED / QUEST_REMOVED / QUEST_LOG_UPDATE / PLAYER_LEVEL_UP
+        ns:InvalidateProgress()
         requestRefresh()
     end
 end)
@@ -443,6 +489,21 @@ end)
 ---------------------------------------------------------------------------
 -- Slash commands
 ---------------------------------------------------------------------------
+
+--- Opens a zone by (partial) name. Returns false when nothing matched and quiet is set.
+local function showZone(name, quiet)
+    local areaID, candidates = ns:FindAreaByName(name)
+    if areaID then
+        ns:ShowUI(areaID)
+    elseif candidates then
+        ns:Print("Which zone? " .. table.concat(candidates, ", "))
+    elseif quiet then
+        return false
+    else
+        ns:Print("Unknown zone: " .. name)
+    end
+    return true
+end
 
 local function slashHandler(msg)
     msg = strtrim(msg or "")
@@ -460,29 +521,20 @@ local function slashHandler(msg)
     elseif cmd == "reset" then
         wipe(ns.db.ignoredQuests)
         wipe(ns.db.ignoredStories)
+        ns:InvalidateProgress()
         ns:Print("All ignored quests and storylines were restored.")
         requestRefresh()
     elseif cmd == "zone" or cmd == "z" then
-        local areaID = ns:FindAreaByName(rest)
-        if areaID then
-            ns:ShowUI(areaID)
-        else
-            ns:Print("Unknown zone: " .. rest)
-        end
+        showZone(rest)
     elseif cmd == "help" then
         ns:Print("Commands:")
         ns:Print("/storylines - toggle the window")
-        ns:Print("/storylines zone <name> - show a zone (e.g. /stl zone Westfall)")
+        ns:Print("/storylines zone <name> - show a zone (e.g. /stl zone westfall, or just /stl westf)")
         ns:Print("/storylines minimap - show/hide the minimap button")
         ns:Print("/storylines announce - toggle chat messages when you finish a storyline step")
         ns:Print("/storylines reset - restore all ignored quests and storylines")
-    else
-        local areaID = ns:FindAreaByName(msg)
-        if areaID then
-            ns:ShowUI(areaID)
-        else
-            ns:Print("Unknown command. Type /storylines help")
-        end
+    elseif not showZone(msg, true) then
+        ns:Print("Unknown command. Type /storylines help")
     end
 end
 

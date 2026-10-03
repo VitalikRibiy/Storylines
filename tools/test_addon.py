@@ -206,6 +206,7 @@ def main():
     for q in (65, 132, 135, 141, 142, 155, 214):
         lua_do("__completed[%d] = true" % q)
     lua_do("__inLog[166] = true")
+    lua_do("local ns = ... ns.__fire('QUEST_LOG_UPDATE')")  # the client fires this on every quest state change
     defias = lua_do("""local ns = ...
         for _, s in ipairs(ns:GetZoneStories(40)) do
             if s.name == 'The Defias Brotherhood' then
@@ -379,6 +380,45 @@ def main():
     check(wp is not None and wp["map"] == 1436 and abs(wp["x"] - 0.563) < 1e-6, "clicking the location sets a map waypoint")
     lua_do("local ns = ... ns:CloseInspector()")
     check(not lua.eval("StorylinesInspector:IsShown()"), "inspector closes")
+
+    print("Review fixes:")
+    check(lua_do("local ns = ... return ns.Quests[1149] ~= nil and ns.Quests[151] ~= nil"),
+          "real quests like 'Test of Faith' and 'Poor Old Blanchy' are not filtered as placeholders")
+    lua_do("""local ns = ...
+        ns.db.collapsedGroups[3] = true
+        ns:RefreshUI()
+        local list = StorylinesFrame.zoneList
+        list.offset = #list.items
+        list:Update()
+        for _, row in ipairs(StorylinesFrame.zoneList.rows) do
+            if row:IsShown() and row.item and row.item.type == 'group' and row.item.group == 3 then
+                row:GetScript('OnClick')(row, 'LeftButton') break
+            end
+        end""")
+    check(lua_do("local ns = ... return ns.db.collapsedGroups[3]") is False,
+          "expanding a default-collapsed group is saved as false (survives the defaults on reload)")
+    check(lua_do("local ns = ... return ns:FindAreaByName('westf')") == 40, "partial zone name 'westf' finds Westfall")
+    ambiguous = lua_do("local ns = ... local id, names = ns:FindAreaByName('west') return id == nil and table.concat(names, ',')")
+    check(ambiguous and "Westfall" in ambiguous and "Western Plaguelands" in ambiguous,
+          "ambiguous 'west' lists the candidates (%s)" % ambiguous)
+    lua_do("__level = 20")
+    names = lua_do("""local ns = ...
+        local out = {}
+        for _, l in ipairs({26, 23, 20, 14, 5}) do out[#out + 1] = ns:GetDifficultyName(l) end
+        return table.concat(out, ',')""")
+    check(names == "Very hard,Hard,Normal,Easy,Trivial", "difficulty names match the colors (%s)" % names)
+    before = lua_do("""local ns = ...
+        for _, s in ipairs(ns:GetZoneStories(40)) do
+            if s.name == 'The Defias Brotherhood' then __defias = s; local _, t = ns:GetStoryProgress(s) return t end
+        end""")
+    lua_do("local ns = ... ns:SetQuestIgnored(65, true)")
+    after = lua_do("local ns = ... local _, t = ns:GetStoryProgress(__defias) return t")
+    lua_do("local ns = ... ns:SetQuestIgnored(65, false)")
+    check(after == before - 1, "ignoring a quest updates cached storyline progress (%s -> %s)" % (before, after))
+    lua_do("local ns = ... ns:ShowUI(40) ns:InspectQuest(1150, __defias)")
+    check(lua_do("local ns = ... local v = ns:GetInspected() return v.story and v.story.name") == "Final Passage",
+          "inspecting a quest from another storyline shows that storyline")
+    lua_do("local ns = ... ns:CloseInspector()")
 
     print("Data sanity:")
     bad = lua_do("""local ns = ...

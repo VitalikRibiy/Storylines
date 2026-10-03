@@ -60,10 +60,9 @@ KALIMDOR_AREAS = {14, 15, 16, 17, 141, 148, 215, 331, 357, 361, 400, 405, 406, 4
                   1637, 1638, 1657}
 BATTLEGROUND_AREAS = {2597, 3277, 3358}
 
-JUNK_NAME = re.compile(
-    r"(\bUNUSED\b|DEPRECATED|\bOLD\b|<\s*(NYI|TXT|UNUSED|CHANGE)|\[PH\]|\bZZ|\btest\b|\bTEST\b|\(old\)|^Reuse|NEW\s*$)",
-    re.I,
-)
+# Placeholder markers in internal quest names. Case-sensitive on purpose: real quests such as
+# "Test of Faith" or "Poor Old Blanchy" must not match. (Questie's blacklist handles the rest.)
+JUNK_NAME = re.compile(r"(UNUSED|DEPRECATED|<\s*(NYI|TXT|CHANGE)|\[PH\]|^ZZ|\bTEST\b|\(old\))")
 
 
 # --------------------------------------------------------------------------- sources

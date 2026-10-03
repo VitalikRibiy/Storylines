@@ -67,14 +67,14 @@ local function AddHeader(text)
     AddText(text, "GameFontNormal", { 1, 0.82, 0 }, 0, 3)
 end
 
---- A clickable line with an icon. opts: icon, iconTag, desaturate, text, right, onClick, onEnter, indent
+--- A clickable line with an icon. opts: icon, iconTag, desaturate, text, color, font, right, onClick, onEnter, indent
 local function AddLine(opts)
     lineUsed = lineUsed + 1
     local line = linePool[lineUsed]
     if not line then
         line = CreateFrame("Button", nil, content)
         line:SetHeight(LINE_HEIGHT)
-        line:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        line:RegisterForClicks("LeftButtonUp")
         line:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
         line.icon = line:CreateTexture(nil, "ARTWORK")
         line.icon:SetSize(14, 14)
@@ -103,6 +103,8 @@ local function AddLine(opts)
     line.icon:SetDesaturated(opts.desaturate or false)
     line.text:SetFontObject(opts.font and _G[opts.font] or GameFontHighlightSmall)
     line.text:SetText(opts.text or "")
+    local c = opts.color or { 1, 1, 1 }
+    line.text:SetTextColor(c[1], c[2], c[3])
     line.right:SetText(opts.right or "")
     line:SetScript("OnClick", opts.onClick)
     line:SetScript("OnEnter", opts.onEnter)
@@ -188,6 +190,7 @@ local function AddQuestLine(questID, prefix, indent)
         desaturate = desat,
         indent = indent,
         text = ns:FormatQuestLine(questID, prefix, state),
+        color = (state == ns.STATE_DONE or ns:IsQuestIgnored(questID)) and { 0.55, 0.55, 0.55 } or nil,
         right = (state == ns.STATE_ACTIVE and "|cffffd100in log|r") or (state == ns.STATE_READY and "|cff40ff40turn in|r") or "",
         onClick = function()
             ns:InspectQuest(questID, view.story)
@@ -254,16 +257,14 @@ local function RenderStory(story)
     local status = complete and "|cff40ff40Complete!|r" or (done > 0 and "|cffffd100In progress|r" or "|cffb0b0b0Not started|r")
     AddText(("Progress: %d / %d quests   %s"):format(done, total, status), "GameFontHighlight", nil, 0, 2)
 
-    local xpTotal, xpLeft = 0, 0
+    local xpLeft = 0
     local first, nextQuest
     for _, step in ipairs(story.steps) do
         local questID, state = ns:ResolveStep(step)
         if questID then
             first = first or questID
-            local xp = ns:GetQuestXP(questID)
-            xpTotal = xpTotal + xp
             if state ~= ns.STATE_DONE then
-                xpLeft = xpLeft + xp
+                xpLeft = xpLeft + ns:GetQuestXP(questID)
                 nextQuest = nextQuest or questID
             end
         end
@@ -380,8 +381,11 @@ local function RenderQuest(questID, story)
         AddHeader("Rewards")
         if baseXP > 0 then
             local text = ns:FormatNumber(xp) .. " XP"
-            if xp ~= baseXP then
-                text = text .. " |cff909090(" .. ns:FormatNumber(baseXP) .. " at quest level)|r"
+            if xp == 0 then
+                text = "No XP at your level |cff909090(" .. ns:FormatNumber(baseXP) .. " below max level)|r"
+            elseif xp ~= baseXP then
+                -- Reduced XP is estimated (the game rounds it), so mark it as approximate.
+                text = "~" .. text .. " |cff909090(" .. ns:FormatNumber(baseXP) .. " at quest level)|r"
             end
             AddText(text, "GameFontHighlight", nil, 4, 2)
         end
@@ -541,7 +545,23 @@ function ns:InspectStory(story)
     self:RefreshInspector()
 end
 
+local function storyContains(story, questID)
+    for _, step in ipairs(story.steps) do
+        for _, id in ipairs(ns.StepIDs(step)) do
+            if id == questID then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 function ns:InspectQuest(questID, story)
+    -- Following "Requires" / "Leads to" can reach a quest of another storyline: show that one.
+    if not story or not storyContains(story, questID) then
+        local stories = self.storiesByQuest[questID]
+        story = stories and stories[1] or nil
+    end
     view = { kind = "quest", questID = questID, story = story }
     self:RefreshInspector()
 end

@@ -147,39 +147,78 @@ end
 -- Difficulty colors (like the quest log: red / orange / yellow / green / gray)
 ---------------------------------------------------------------------------
 
-local function grayLevel(playerLevel)
-    if playerLevel <= 5 then
-        return 0
-    elseif playerLevel <= 39 then
-        return playerLevel - 5 - math.floor(playerLevel / 10)
-    elseif playerLevel <= 59 then
-        return playerLevel - 1 - math.floor(playerLevel / 5)
+-- Same categories as the game's QuestDifficultyColors table.
+local DIFFICULTY_LABELS = {
+    impossible = "Very hard",
+    verydifficult = "Hard",
+    difficult = "Normal",
+    standard = "Easy",
+    trivial = "Trivial",
+}
+local FALLBACK_COLORS = {
+    impossible = { r = 1, g = 0.1, b = 0.1 },
+    verydifficult = { r = 1, g = 0.5, b = 0.25 },
+    difficult = { r = 1, g = 0.82, b = 0 },
+    standard = { r = 0.25, g = 0.75, b = 0.25 },
+    trivial = { r = 0.5, g = 0.5, b = 0.5 },
+}
+
+-- How many levels below you a quest stays green (Classic rules when the client has no API for it).
+local function greenRange(playerLevel)
+    if GetQuestGreenRange then
+        local range = GetQuestGreenRange()
+        if range then
+            return range
+        end
     end
-    return playerLevel - 9
+    local gray
+    if playerLevel <= 5 then
+        gray = 0
+    elseif playerLevel <= 39 then
+        gray = playerLevel - 5 - math.floor(playerLevel / 10)
+    elseif playerLevel <= 59 then
+        gray = playerLevel - 1 - math.floor(playerLevel / 5)
+    else
+        gray = playerLevel - 9
+    end
+    return playerLevel - gray - 1
+end
+
+--- Difficulty of a quest level for this character, the way the quest log colors it.
+-- @return category key (see DIFFICULTY_LABELS), r, g, b
+function ns:GetLevelDifficulty(level)
+    if GetQuestDifficultyColor and QuestDifficultyColors then
+        local color = GetQuestDifficultyColor(level)
+        for key, c in pairs(QuestDifficultyColors) do
+            if c == color and DIFFICULTY_LABELS[key] then
+                return key, c.r, c.g, c.b
+            end
+        end
+    end
+    local playerLevel = UnitLevel("player") or 1
+    local diff = level - playerLevel
+    local key
+    if diff >= 5 then
+        key = "impossible"
+    elseif diff >= 3 then
+        key = "verydifficult"
+    elseif diff >= -2 then
+        key = "difficult"
+    elseif -diff <= greenRange(playerLevel) then
+        key = "standard"
+    else
+        key = "trivial"
+    end
+    local c = (QuestDifficultyColors and QuestDifficultyColors[key]) or FALLBACK_COLORS[key]
+    return key, c.r, c.g, c.b
 end
 
 function ns:GetLevelColor(level)
     if not level or level <= 0 then
         return 1, 1, 1
     end
-    if GetQuestDifficultyColor then
-        local c = GetQuestDifficultyColor(level)
-        if type(c) == "table" and c.r then
-            return c.r, c.g, c.b
-        end
-    end
-    local playerLevel = UnitLevel("player") or 1
-    local diff = level - playerLevel
-    if diff >= 5 then
-        return 1, 0.1, 0.1
-    elseif diff >= 3 then
-        return 1, 0.5, 0.25
-    elseif diff >= -2 then
-        return 1, 0.82, 0
-    elseif level > grayLevel(playerLevel) then
-        return 0.25, 0.75, 0.25
-    end
-    return 0.5, 0.5, 0.5
+    local _, r, g, b = self:GetLevelDifficulty(level)
+    return r, g, b
 end
 
 function ns:ColorLevel(level, text)
@@ -188,18 +227,7 @@ function ns:ColorLevel(level, text)
 end
 
 function ns:GetDifficultyName(level)
-    local playerLevel = UnitLevel("player") or 1
-    local diff = level - playerLevel
-    if diff >= 5 then
-        return "Very difficult"
-    elseif diff >= 3 then
-        return "Difficult"
-    elseif diff >= -2 then
-        return "Standard"
-    elseif level > grayLevel(playerLevel) then
-        return "Easy"
-    end
-    return "Trivial"
+    return DIFFICULTY_LABELS[(self:GetLevelDifficulty(level))]
 end
 
 ---------------------------------------------------------------------------
@@ -215,9 +243,13 @@ function ns:GetQuestXP(questID)
         return 0, 0
     end
     local playerLevel = UnitLevel("player") or 1
-    local maxLevel = (GetMaxLevelForPlayerExpansion and GetMaxLevelForPlayerExpansion())
-        or (GetMaxPlayerLevel and GetMaxPlayerLevel()) or 60
-    if playerLevel >= maxLevel then
+    local atMax
+    if IsPlayerAtEffectiveMaxLevel then
+        atMax = IsPlayerAtEffectiveMaxLevel()
+    else
+        atMax = playerLevel >= ((GetMaxPlayerLevel and GetMaxPlayerLevel()) or 60)
+    end
+    if atMax then
         return 0, base
     end
     local diff = playerLevel - self:GetQuestLevel(questID)

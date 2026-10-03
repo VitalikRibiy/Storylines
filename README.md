@@ -47,7 +47,7 @@ zone has, which ones you skipped completely, and which quest in a chain you need
 | Command | |
 | --- | --- |
 | `/storylines` or `/stl` | Open/close the window |
-| `/stl zone <name>` or `/stl <name>` | Open a specific zone, e.g. `/stl westfall` |
+| `/stl zone <name>` or `/stl <name>` | Open a zone by name or the start of it, e.g. `/stl westf` |
 | `/stl minimap` | Show/hide the minimap button |
 | `/stl announce` | Turn the chat messages on/off |
 | `/stl reset` | Restore every ignored quest and storyline |
@@ -76,7 +76,7 @@ or battleground also gets that type.
    prerequisites, then by quest level.
 6. It names each storyline after its final quest, skipping generic names like "Return to …".
 
-The current data has **440 storylines and 455 side quests across 72 zones**.
+The current data has **438 storylines and 456 side quests across 72 zones**.
 
 Because the storylines are generated, some may be off: a few chains get merged or split, and
 some names aren't great. You can correct these in `tools/overrides.py` (story names, zones,

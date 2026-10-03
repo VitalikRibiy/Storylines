@@ -17,7 +17,6 @@ local COLOR_DONE = { 0.5, 0.5, 0.5 }
 local COLOR_GREEN = { 0.25, 1, 0.25 }
 local COLOR_GOLD = { 1, 0.82, 0 }
 local COLOR_WHITE = { 1, 1, 1 }
-local COLOR_RED = { 1, 0.35, 0.35 }
 
 local frame
 local expandedStories = {}
@@ -286,7 +285,8 @@ local function OnZoneRowClick(row)
         return
     end
     if item.type == "group" then
-        ns.db.collapsedGroups[item.group] = not ns.db.collapsedGroups[item.group] or nil
+        -- Store false (not nil) so groups that are collapsed by default remember being expanded.
+        ns.db.collapsedGroups[item.group] = not ns.db.collapsedGroups[item.group]
         frame.zoneList:SetItems(BuildZoneItems(), true)
     else
         ns:SelectArea(item.areaID)
@@ -356,7 +356,9 @@ local function BuildStoryItems(areaID)
         end
     end
     if #stories == 0 then
-        table.insert(items, { type = "note", text = "No storylines in this zone for your character." })
+        local anyIgnored = #ns:GetZoneStories(areaID, true) > 0
+        table.insert(items, { type = "note", text = anyIgnored and "You are ignoring every storyline here."
+            or "No storylines in this zone for your character." })
     elseif shownStories == 0 then
         table.insert(items, { type = "note", text = "All storylines here are complete!" })
     end
@@ -488,9 +490,9 @@ local function OnStoryRowClick(row, button)
     end
     if item.type == "story" then
         if button == "RightButton" then
-            local key = item.story.key
-            ns.db.ignoredStories[key] = not ns.db.ignoredStories[key] or nil
-            ns:Print((ns.db.ignoredStories[key] and "Ignoring storyline %s. Tick \"Show ignored\" to see it again."
+            local ignored = not ns:IsStoryIgnored(item.story)
+            ns:SetStoryIgnored(item.story, ignored)
+            ns:Print((ignored and "Ignoring storyline %s. Tick \"Show ignored\" to see it again."
                 or "Storyline %s is no longer ignored."):format("|cffffd100" .. item.story.name .. "|r"))
         else
             local view = ns:GetInspected()
@@ -505,8 +507,7 @@ local function OnStoryRowClick(row, button)
         ns:RefreshUI(true)
     elseif item.type == "step" or item.type == "side" then
         if button == "RightButton" then
-            local id = item.questID
-            ns.db.ignoredQuests[id] = not ns.db.ignoredQuests[id] or nil
+            ns:SetQuestIgnored(item.questID, not ns:IsQuestIgnored(item.questID))
             ns:RefreshUI(true)
         elseif IsShiftKeyDown() and ChatEdit_GetActiveWindow and ChatEdit_GetActiveWindow() then
             ChatEdit_GetActiveWindow():Insert(("[%s] (%d)"):format(ns:GetQuestName(item.questID), item.questID))
@@ -586,6 +587,9 @@ local function CreateMainFrame()
         self:StopMovingOrSizing()
         local point, _, relPoint, x, y = self:GetPoint()
         ns.db.position = { point, relPoint, x, y }
+        if ns.RefreshInspector then
+            ns:RefreshInspector(true) -- re-dock on the side that has room
+        end
     end)
     SetBackdropSafe(f, "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
         "Interface\\DialogFrame\\UI-DialogBox-Border", 32, 11)
@@ -756,7 +760,7 @@ function ns:RefreshUI(keepStoryOffset, skipInspector)
         keepStoryOffset = false
         self.renderedArea = self.selectedArea
         -- Make sure the newly selected zone is listed and scrolled into view.
-        self.db.collapsedGroups[self.Zones[self.selectedArea].group] = nil
+        self.db.collapsedGroups[self.Zones[self.selectedArea].group] = false
     end
     frame.zoneList:SetItems(BuildZoneItems(), true)
     if areaChanged then
@@ -804,8 +808,11 @@ function ns:ShowUI(areaID)
     if areaID then
         self.selectedArea = areaID
     end
-    frame:Show()
-    self:RefreshUI()
+    if frame:IsShown() then
+        self:RefreshUI()
+    else
+        frame:Show() -- OnShow refreshes
+    end
 end
 
 function ns:ToggleUI()
