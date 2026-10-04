@@ -1,0 +1,77 @@
+# Publishes a release when a version tag (e.g. v0.4.0) is pushed:
+# runs the tests, builds the zip, creates a GitHub release and uploads the version to CurseForge.
+# Create the tag with tools/release.py. Can also be started by hand (Actions -> Release -> Run
+# workflow); by default that is a dry run that only builds and checks.
+#
+# Repository settings needed (Settings -> Secrets and variables -> Actions):
+#   secret   CF_API_TOKEN     CurseForge API token (CurseForge: My Account -> API Tokens)
+#   variable CF_PROJECT_ID    CurseForge project ID (or "## X-Curse-Project-ID" in Storylines.toc)
+#   variable CF_RELEASE_TYPE  alpha, beta or release (optional, default beta)
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only build and check, don't upload"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: pip install lupa
+
+      - name: Test the addon and validate the data
+        run: |
+          python tools/test_addon.py
+          python tools/validate_data.py
+
+      - name: Check the version
+        id: version
+        run: |
+          version=$(sed -n 's/^## Version: *//p' Storylines.toc | tr -d '\r')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match '## Version: $version' in Storylines.toc"
+            exit 1
+          fi
+
+      - name: Build the zip
+        run: ./tools/package.sh
+
+      - name: Changelog for this version
+        run: python tools/curseforge_upload.py --print-changelog > release-notes.md
+
+      - name: Create GitHub release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME"
+          "dist/Storylines-${{ steps.version.outputs.version }}.zip"
+          --title "Storylines ${{ steps.version.outputs.version }}"
+          --notes-file release-notes.md
+
+      - name: Upload to CurseForge
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_PROJECT_ID: ${{ vars.CF_PROJECT_ID }}
+          CF_RELEASE_TYPE: ${{ vars.CF_RELEASE_TYPE }}
+          DRY_RUN: ${{ github.ref_type != 'tag' && inputs.dry_run }}
+        run: |
+          python tools/curseforge_upload.py --zip "dist/Storylines-${{ steps.version.outputs.version }}.zip" \
+            $([ "$DRY_RUN" = "true" ] && echo --dry-run)
