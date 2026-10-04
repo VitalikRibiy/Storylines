@@ -85,6 +85,10 @@ EASTERN_KINGDOMS, KALIMDOR, DUNGEONS, BATTLEGROUNDS, CLASS_QUESTS = 1, 2, 3, 4, 
 KALIMDOR_AREAS = {14, 15, 16, 17, 141, 148, 215, 331, 357, 361, 400, 405, 406, 440, 490, 493, 618, 1377,
                   1637, 1638, 1657}
 BATTLEGROUND_AREAS = {2597, 3277, 3358}
+# Every classic dungeon and raid; always listed, even before any quest is known for it.
+CLASSIC_DUNGEONS = {2437, 718, 1581, 209, 719, 717, 721, 491, 796, 722, 1337, 1176, 2100, 1477, 1584, 1583,
+                    2557, 2057, 2017, 2717, 2159, 2677, 1977, 3429, 3428, 3456}
+NOT_DUNGEONS = {2257}  # Deeprun Tram: listed with the Eastern Kingdoms zones
 
 # Placeholder markers in internal quest names. Case-sensitive on purpose: real quests such as
 # "Test of Faith" or "Poor Old Blanchy" must not match. (Questie's blacklist handles the rest.)
@@ -280,6 +284,9 @@ def build(offline, questiedb=None):
     dungeons = load_dungeons(get("dungeons"))
     for area, (name, parent) in overrides.EXTRA_DUNGEONS.items():
         dungeons.setdefault(area, {"name": name, "alts": [], "parent": parent})
+    for area in NOT_DUNGEONS:
+        area_names.setdefault(area, dungeons.pop(area, {}).get("name", "Area %d" % area))
+    items = questiedb_export.load(combined, "items")
     blacklist = load_blacklist(get("blacklist")) | set(overrides.EXCLUDE_QUESTS)
 
     # Area names: "Sub -> Parent" comments name both ends.
@@ -292,11 +299,20 @@ def build(offline, questiedb=None):
                 if ui_map == target:
                     area_names.setdefault(parent_area, parent_name)
 
-    zone_areas = set(map_to_area.values())  # one AreaID per native zone/city map
+    zone_areas = set(map_to_area.values()) | NOT_DUNGEONS  # one AreaID per native zone/city map
     dungeon_alias = {}
     for did, d in dungeons.items():
         for alt in d["alts"]:
             dungeon_alias[alt] = did
+    # Several entries for one dungeon (e.g. Dire Maul's wings) become the main one.
+    main_by_name = {}
+    for did in sorted(dungeons, key=lambda d: (d not in CLASSIC_DUNGEONS, d)):
+        main_by_name.setdefault(dungeons[did]["name"], did)
+    for did in list(dungeons):
+        main = main_by_name[dungeons[did]["name"]]
+        if main != did:
+            dungeon_alias[did] = main
+            del dungeons[did]
 
     def resolve_zone(area):
         seen = set()
@@ -312,6 +328,43 @@ def build(offline, questiedb=None):
                 continue
             break
         return None
+
+    def dungeon_of(area):
+        area = dungeon_alias.get(area, area)
+        if area in dungeons:
+            return area
+        resolved = resolve_zone(area)
+        return resolved if resolved in dungeons else None
+
+    def objective_dungeons(q):
+        """Dungeons a quest takes you into: every place one of its objectives (monsters to kill, items to
+        loot, objects to use) or its starting item can be found is inside the same dungeon. E.g. the
+        Head of Onyxia quests -> Onyxia's Lair."""
+        sources = []
+        objectives = q.get(10) or {}
+        for entry in luatable.as_list(objectives.get(1)) or []:  # creatures
+            sources.append([("npc", i) for i in ids({1: (luatable.as_list(entry) or [None])[0]})])
+        for entry in luatable.as_list(objectives.get(2)) or []:  # objects
+            sources.append([("object", i) for i in ids({1: (luatable.as_list(entry) or [None])[0]})])
+        for entry in luatable.as_list(objectives.get(5)) or []:  # kill credit: {{npcIds}, base, text}
+            sources.append([("npc", i) for i in ids((luatable.as_list(entry) or [None])[0])])
+        item_ids = [(luatable.as_list(e) or [None])[0] for e in luatable.as_list(objectives.get(3)) or []]
+        item_ids += ids((q.get(2) or {}).get(3))  # started by an item
+        for item_id in item_ids:
+            item = items.get(item_id) or {}
+            sources.append([("npc", i) for i in ids(item.get(2))] + [("object", i) for i in ids(item.get(3))])
+        found = set()
+        for group in sources:
+            areas = set()
+            for kind, entity_id in group:
+                record = (npcs if kind == "npc" else objects).get(entity_id) or {}
+                areas.update((record.get(7) if kind == "npc" else record.get(4)) or {})
+            if not areas:
+                continue
+            places = {dungeon_of(a) for a in areas}
+            if len(places) == 1 and None not in places:
+                found |= places
+        return found
 
     # ---- pick the quests that belong in zone storylines
     kept = {}
@@ -352,7 +405,8 @@ def build(offline, questiedb=None):
                     races = {frozenset(["A"]): ALLIANCE_RACES, frozenset(["H"]): HORDE_RACES}.get(
                         frozenset(friendly), 0)
                 kept[qid] = {"name": name, "level": q.get(LEVEL) or 0, "zone": resolved,
-                             "races": races, "classes": classes, "raw": q}
+                             "races": races, "classes": classes, "raw": q,
+                             "dungeons": objective_dungeons(q)}
         if reason:
             skipped[reason.split(" (")[0]] += 1
 
@@ -483,7 +537,8 @@ def build(offline, questiedb=None):
         zone = overrides.STORY_ZONE.get(story_key, zone)
         ordered, finals = ordered_steps(members)
         # Also list it where you pick it up, if that is another zone or city (e.g. Undercity for
-        # Shadowfang Keep quests, Mulgore for a chain that continues in The Barrens).
+        # Shadowfang Keep quests, Mulgore for a chain that continues in The Barrens), and under the
+        # dungeons it leads into (below).
         start_zones = {giver_zone(q) for q in ordered[0]} - {None, zone}
         if zone in CLASS_AREAS:
             # A class storyline several classes can do is listed under each of those classes. (A zone
@@ -492,6 +547,11 @@ def build(offline, questiedb=None):
                 for bit in class_bits(kept[q]["classes"]):
                     start_zones.add(CLASS_AREA_BASE + bit)
             start_zones.discard(zone)
+        # Also list it under every dungeon it leads into (e.g. Leaders of the Fang under Wailing Caverns).
+        for q in members:
+            for dungeon in ({kept[q]["zone"]} & set(dungeons)) | kept[q]["dungeons"]:
+                if dungeon != zone:
+                    start_zones.add(dungeon)
         if len(ordered) == 1:
             zones[zone]["side"].append(ordered[0])
             for other in start_zones:
@@ -504,11 +564,14 @@ def build(offline, questiedb=None):
             zones[other]["also"].append(story_key)
 
     disambiguate_names(zones, kept, npcs)
+    for area in CLASSIC_DUNGEONS | set(overrides.EXTRA_DUNGEONS):
+        if area in dungeons:
+            zones[area]  # make sure every dungeon is listed (defaultdict), even with no quests yet
 
     return {"kept": kept, "zones": zones, "dungeons": dungeons, "area_names": area_names,
             "area_to_map": area_to_map, "map_to_area": map_to_area, "skipped": skipped, "quests": quests, "prereqs": prereqs, "resolve_zone": resolve_zone,
             "lead_ins": lead_ins, "npcs": npcs, "objects": objects,
-            "items": lambda: questiedb_export.load(combined, "items"), "fetch": get,
+            "items": lambda: items, "fetch": get,
             "source": "QuestieDB " + questiedb_export.commit_info(checkout)}
 
 

@@ -229,12 +229,14 @@ end
 local function BuildZoneItems()
     local byGroup, groupDone, groupTotal, counted = {}, {}, {}, {}
     for areaID, zone in pairs(ns.Zones) do
-        local done, total = ns:GetZoneProgress(areaID)
-        if total > 0 then
+        local done, total, sideDone, sideTotal = ns:GetZoneProgress(areaID)
+        -- Zones with only side quests are listed too, and every dungeon and raid is listed even before
+        -- any quest is known for it (e.g. WoW Forever's new dungeons).
+        if total > 0 or sideTotal > 0 or zone.group == 3 then
             local group = zone.group
             byGroup[group] = byGroup[group] or {}
             table.insert(byGroup[group], { type = "zone", areaID = areaID, done = done, total = total,
-                name = ns:GetZoneName(areaID) })
+                sideDone = sideDone, sideTotal = sideTotal, name = ns:GetZoneName(areaID) })
             -- A storyline can be listed in two zones (where it is picked up and where it happens);
             -- count it once in the group total.
             counted[group] = counted[group] or {}
@@ -277,13 +279,21 @@ local function UpdateZoneRow(row, item)
         })
     else
         local isCurrent = item.areaID == ns.currentArea
+        local done, total, right = item.done, item.total, nil
+        if total == 0 and item.sideTotal == 0 then
+            right = "|cff707070no quests yet|r"
+        elseif total == 0 then
+            -- Only side quests here: show those instead.
+            done, total = item.sideDone, item.sideTotal
+            right = "|cff909090side|r " .. progressColor(done, total) .. done .. "/" .. total .. "|r"
+        end
         SetRow(row, {
             indent = 8,
             icon = isCurrent and ICON_HERE or nil,
             iconSize = 14,
             text = item.name,
-            color = (item.done == item.total) and COLOR_GREEN or COLOR_WHITE,
-            right = progressColor(item.done, item.total) .. item.done .. "/" .. item.total .. "|r",
+            color = (total == 0 and COLOR_DONE) or ((done == total) and COLOR_GREEN) or COLOR_WHITE,
+            right = right or (progressColor(done, total) .. done .. "/" .. total .. "|r"),
             selected = item.areaID == ns.selectedArea,
         })
     end
@@ -311,6 +321,9 @@ local function OnZoneRowEnter(row)
     local done, total, sideDone, sideTotal = ns:GetZoneProgress(item.areaID)
     GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
     GameTooltip:SetText(item.name, 1, 1, 1)
+    if total == 0 and sideTotal == 0 then
+        GameTooltip:AddLine("No quests are known for this dungeon yet.", 0.6, 0.6, 0.6)
+    end
     GameTooltip:AddDoubleLine("Storylines", done .. " / " .. total, nil, nil, nil, 1, 1, 1)
     if sideTotal > 0 then
         GameTooltip:AddDoubleLine("Side quests", sideDone .. " / " .. sideTotal, nil, nil, nil, 1, 1, 1)
@@ -356,7 +369,11 @@ local function BuildStoryItems(areaID)
     end
     if #stories == 0 then
         local anyIgnored = #ns:GetZoneStories(areaID, true) > 0
-        table.insert(items, { type = "note", text = anyIgnored and "You are ignoring every storyline here."
+        local hasSide = #ns:GetZoneSideQuests(areaID) > 0
+        local isDungeon = ns.Zones[areaID].group == 3
+        table.insert(items, { type = "note", text = (anyIgnored and "You are ignoring every storyline here.")
+            or (hasSide and "No storylines here, only side quests (below).")
+            or (isDungeon and "No quests are known for this dungeon yet. They will appear in an update.")
             or "No storylines in this zone for your character." })
     elseif shownStories == 0 then
         table.insert(items, { type = "note", text = "All storylines here are complete!" })
@@ -543,7 +560,7 @@ local function OnStoryRowEnter(row)
         GameTooltip:SetText(item.story.name, 1, 0.82, 0)
         GameTooltip:AddLine(("%d of %d quests completed"):format(item.done, item.total), 1, 1, 1)
         if item.elsewhere then
-            GameTooltip:AddLine(("You pick it up here; most of it takes place in %s."):format(
+            GameTooltip:AddLine(("Also listed here because it starts or continues here; it belongs to %s."):format(
                 ns:GetZoneName(item.elsewhere)), 0.6, 0.8, 1, true)
         end
         if item.complete then

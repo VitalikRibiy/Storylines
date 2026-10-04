@@ -637,6 +637,71 @@ def main():
         return found""")
     check(sw is not None, "paladin storylines also show in Stormwind City, where they start (%s)" % sw)
 
+    print("Dungeons:")
+    wc = lua_do("""local ns = ...
+        __faction, __race, __class = 'Horde', 2, 1 ns:UpdatePlayerInfo()
+        local names = {}
+        for _, s in ipairs(ns:GetZoneStories(718)) do names[#names + 1] = s.name end
+        local _, total, _, sideTotal = ns:GetZoneProgress(718)
+        ns:ShowUI(718)
+        local listed = false
+        for _, item in ipairs(StorylinesFrame.zoneList.items) do
+            if item.areaID == 718 then listed = true end
+        end
+        __faction, __race = 'Alliance', 1 ns:UpdatePlayerInfo()
+        return table.concat(names, ',') .. '|' .. total .. '|' .. sideTotal .. '|' .. tostring(listed)""")
+    names, total, side_total, listed = wc.split("|")
+    check("Leaders of the Fang" in names, "Wailing Caverns lists the storylines that lead into it (%s)" % names)
+    check(listed == "true", "Wailing Caverns is in the zone list")
+    dm = lua_do("""local ns = ...
+        for _, s in ipairs(ns:GetZoneStories(1581)) do if s.name == 'The Defias Brotherhood' then return true end end
+        return false""")
+    check(dm, "The Deadmines lists The Defias Brotherhood")
+    side_only = lua_do("""local ns = ...
+        -- a zone with side quests but no storylines for this character must still be listed
+        for areaID, zone in pairs(ns.Zones) do
+            local _, t, _, st = ns:GetZoneProgress(areaID)
+            if t == 0 and st > 0 and ns:IsZoneForPlayer(zone) then
+                ns:ShowUI(areaID)
+                for _, row in ipairs(StorylinesFrame.zoneList.rows) do
+                    if row:IsShown() and row.item and row.item.areaID == areaID then return row.right:GetText() end
+                end
+                return 'not listed: ' .. zone.name
+            end
+        end
+        return 'none'""")
+    check(side_only == "none" or side_only.startswith("|cff909090side|r"),
+          "zones with only side quests are listed with their side quest count (%s)" % side_only)
+
+    dungeon_rows = lua_do("""local ns = ...
+        __faction, __race, __class = 'Horde', 2, 1 ns:UpdatePlayerInfo()
+        ns.db.collapsedGroups[3] = false
+        ns:ShowUI(718) ns:RefreshUI()
+        local names, empty = {}, nil
+        for _, item in ipairs(StorylinesFrame.zoneList.items) do
+            if item.type == 'zone' and ns.Zones[item.areaID].group == 3 then
+                names[#names + 1] = item.name
+                if item.name == 'City of Dalaran' then empty = item end
+            end
+        end
+        local text = 'not shown'
+        ns:ShowUI(empty.areaID)
+        for _, row in ipairs(StorylinesFrame.zoneList.rows) do
+            if row:IsShown() and row.item and row.item.areaID == empty.areaID then text = row.right:GetText() end
+        end
+        local note = __visibleText(StorylinesFrame)
+        text = text .. (note:find('No quests are known for this dungeon yet', 1, true) and ' +note' or '')
+        __faction, __race = 'Alliance', 1 ns:UpdatePlayerInfo()
+        return #names .. '#' .. text .. '#' .. table.concat(names, ',')""")
+    count, empty_text, names = dungeon_rows.split("#", 2)
+    check(count == "35", "the Dungeons & Raids group lists all 35 dungeons and raids (%s)" % count)
+    for name in ("Onyxia's Lair", "Dire Maul", "City of Dalaran", "Alcaz Prison", "Shaper's Terrace"):
+        check(name in names, "%s is listed" % name)
+    check(names.count("Dire Maul") == 1, "Dire Maul is listed once")
+    check("Deeprun Tram" not in names, "Deeprun Tram is not a dungeon")
+    check("no quests yet" in empty_text, "dungeons without known quests say so in the list (%s)" % empty_text)
+    check("+note" in empty_text, "and in the storyline panel")
+
     print("Data sanity:")
     bad = lua_do("""local ns = ...
         local missing = 0

@@ -11,7 +11,9 @@ zone has, which ones you skipped completely, and which quest in a chain you need
 ## Features
 
 - **Zone list** grouped by Eastern Kingdoms, Kalimdor, Dungeons & Raids, Battlegrounds and Class Quests, with
-  `completed / total` storylines per zone. An arrow marks the zone you're in.
+  `completed / total` storylines per zone. An arrow marks the zone you're in. **Dungeons & Raids**
+  lists every dungeon and raid (all 26 classic ones and WoW Forever's 9 new ones), each with the
+  storylines that lead into it. Dungeons whose quests aren't known yet say "no quests yet".
 - **Storyline list** for the selected zone, with a progress bar, level range, `done/total` count
   and a check mark plus strike-through for finished storylines.
 - **Click a storyline** to see its quests in order, one branch at a time. Each quest shows
@@ -111,7 +113,9 @@ dungeon, raid or battleground also gets that type.
    to shown in grey. Group totals count each storyline once.
 7. It names each storyline after its final quest, skipping generic names like "Return to …".
 
-The current data has **477 storylines and 1,034 side quests across 77 zones and 9 classes**.
+The current data has **477 storylines and 1,034 side quests across 51 zones, 35 dungeons and
+raids, 3 battlegrounds and 9 classes**. 7 of WoW Forever's new dungeons have no quests in QuestieDB
+yet. They are listed already and fill in when the data is regenerated after QuestieDB adds them.
 
 Because the storylines are generated, some may be off: a few chains get merged or split, and
 some names aren't great. You can correct these in `tools/overrides.py` (story names, zones,
@@ -126,6 +130,19 @@ python3 tools/generate_data.py --questiedb ../QuestieDB   # or use an existing Q
 python3 tools/generate_data.py --report   # also prints every zone's storylines with their keys
 python3 tools/show_story.py Westfall      # shows the quests of each storyline in a zone (or by quest ID)
 ```
+
+### Releasing a new version
+
+1. Describe the changes under a `## [x.y.z] - Unreleased` heading at the top of `CHANGELOG.md`.
+2. Run `python3 tools/release.py x.y.z`. It sets the version in `Storylines.toc`, dates the
+   changelog, runs the tests, commits and tags `vx.y.z`.
+3. Push the commit and the tag: `git push origin <branch> vx.y.z`.
+
+Pushing the tag runs the **Release** GitHub workflow. It tests the addon, builds the zip, creates a
+GitHub release and uploads the version to CurseForge with its changelog section. It needs a
+`CF_API_TOKEN` secret and a `CF_PROJECT_ID` variable in the repository's Actions settings
+(`CF_RELEASE_TYPE` optionally switches from `beta` to `release`). You can also start it by hand
+under Actions → Release; by default that is a dry run.
 
 ### Tests
 
