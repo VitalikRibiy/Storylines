@@ -8,7 +8,9 @@ for interface 16001 = WoW Forever) and uploads the zip.
 Environment:
     CF_API_TOKEN      CurseForge API token (CurseForge: My Account -> API Tokens). Required to upload.
     CF_PROJECT_ID     Project ID, unless Storylines.toc has "## X-Curse-Project-ID".
-    CF_RELEASE_TYPE   alpha, beta or release (default: beta).
+    CF_RELEASE_TYPE   alpha, beta or release (default: beta). Used for versions 1.0.0 and later;
+                      0.x versions are always beta, and "-alpha" / "-beta" versions use that type.
+    RELEASE_TYPE      Overrides all of the above (set by the workflow's manual run).
 
 Usage:
     python3 tools/curseforge_upload.py --zip dist/Storylines-0.4.0.zip [--dry-run]
@@ -26,6 +28,20 @@ import uuid
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 API = os.environ.get("CF_API_URL", "https://wow.curseforge.com/api")  # override only for testing
 RELEASE_TYPES = ("alpha", "beta", "release")
+
+
+def release_type_for(version):
+    """alpha/beta/release for this version: an explicit override, the version's own -alpha/-beta
+    suffix, beta for 0.x versions (before the official 1.0 release), otherwise CF_RELEASE_TYPE."""
+    override = (os.environ.get("RELEASE_TYPE") or "").strip().lower()
+    if override and override != "auto":
+        return override
+    suffix = re.search(r"-(alpha|beta)", version)
+    if suffix:
+        return suffix.group(1)
+    if version.split(".")[0] == "0":
+        return "beta"
+    return (os.environ.get("CF_RELEASE_TYPE") or "beta").strip().lower()
 
 
 def toc_field(name):
@@ -108,9 +124,9 @@ def main():
     if status.lower() == "unreleased" and not args.dry_run:
         sys.exit("CHANGELOG.md still lists %s as Unreleased; run tools/release.py first" % version)
 
-    release_type = (os.environ.get("CF_RELEASE_TYPE") or "beta").strip().lower()
+    release_type = release_type_for(version)
     if release_type not in RELEASE_TYPES:
-        sys.exit("CF_RELEASE_TYPE must be one of %s" % ", ".join(RELEASE_TYPES))
+        sys.exit("Release type %r must be one of %s" % (release_type, ", ".join(RELEASE_TYPES)))
     project_id = toc_field("X-Curse-Project-ID") or os.environ.get("CF_PROJECT_ID", "").strip()
     game_version = os.environ.get("CF_GAME_VERSION", "").strip() or game_version_name(toc_field("Interface") or "")
     metadata = {

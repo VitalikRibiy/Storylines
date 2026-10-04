@@ -10,7 +10,8 @@ zone has, which ones you skipped completely, and which quest in a chain you need
 
 ## Features
 
-- **Zone list** grouped by Eastern Kingdoms, Kalimdor, Dungeons & Raids, Battlegrounds and Class Quests, with
+- **Zone list** grouped by Eastern Kingdoms, Kalimdor, Dungeons & Raids, Battlegrounds, Class Quests and
+  Professions, with
   `completed / total` storylines per zone. An arrow marks the zone you're in. **Dungeons & Raids**
   lists every dungeon and raid (all 26 classic ones and WoW Forever's 9 new ones), each with the
   storylines that lead into it. Dungeons whose quests aren't known yet say "no quests yet".
@@ -34,6 +35,10 @@ zone has, which ones you skipped completely, and which quest in a chain you need
 - **Class Quests**: your own class's quest chains (paladin tomes, warlock summons, druid forms…)
   under **Class Quests** in the zone list, and also in the zone or city where they start. You
   never see another class's quests.
+- **Professions**: profession quests (Blacksmithing armor sets, cooking recipes, Gnome and Goblin
+  Engineering…) under **Professions**, one entry per profession. Only the professions your
+  character has learned are listed (an option shows them all), and quests show the skill they
+  need ("needs Cooking 50").
 - **Side quests**: quests that aren't part of any chain, listed separately with their own counter.
 - Only shows quests your **faction and race** can actually do.
 - **Reputation requirements**: quests that need a reputation you don't have are marked
@@ -47,14 +52,25 @@ zone has, which ones you skipped completely, and which quest in a chain you need
     game itself just hides those quests): *"James Halloran has [Young Crocolisk Skins] for you, but
     your reputation is not high enough: Requires Honored with Ironforge (you are Friendly +1,200)."*
   - when you turn in a quest whose follow-up needs more reputation.
-  Each quest is reported once per session. `/stl repwarn` turns these warnings off.
+  Each quest is reported once per session. The options choose chat, screen, both or off.
 - **Chat messages** when you turn in a storyline quest (`Storyline progress: The Defias
   Brotherhood 5/8`) and when you finish a whole storyline or zone.
 - **Right-click** a quest or storyline to ignore it, for a quest you can't get or a chain you don't
   care about. Ignored entries no longer count. Tick *Show ignored* to see them again.
 - *Follow my zone* switches to your current zone automatically. If the world map is open, the
   window opens on the zone the map is showing.
-- Minimap button (drag it to move) and an entry in the addon compartment menu.
+- **Resizable window**: drag the bottom-right corner; the size and position are remembered.
+- **Options** (Options → AddOns → Storylines, `/stl options`, or right-click the minimap button):
+  - *Window*: scale, background opacity, text size, which side the details panel opens on, lock
+    window, close with Escape, reset size and position.
+  - *Lists*: hide completed, side quests, show ignored, follow my zone, hide gray quests, hide
+    quests far above your level (storylines and side quests; started ones always stay), sort by level, name or progress,
+    hide finished zones, show unlearned professions, show quest IDs.
+  - *Notifications*: chat messages, reputation warnings, completion sound.
+  - *Map*: minimap button, waypoints with TomTom or the game's map pin.
+  - Clear ignored quests and reset all settings.
+- Minimap button (click to open, right-click for options, drag to move) and an entry in the addon
+  compartment menu.
 
 ## Installation
 
@@ -74,6 +90,7 @@ and run `tools/package.sh` (writes `dist/Storylines-<version>.zip`).
 | --- | --- |
 | `/storylines` or `/stl` | Open/close the window |
 | `/stl zone <name>` or `/stl <name>` | Open a zone by name or the start of it, e.g. `/stl westf` |
+| `/stl options` | Open the settings |
 | `/stl minimap` | Show/hide the minimap button |
 | `/stl announce` | Turn the storyline progress messages on/off |
 | `/stl repwarn` | Turn the reputation warnings on/off |
@@ -94,10 +111,11 @@ applied on top.
 requirements for the inspector). Quest types come from Questie's tag list; any quest set in a
 dungeon, raid or battleground also gets that type.
 
-1. It keeps normal zone quests and class quests. It leaves out repeatable and profession quests,
-   placeholder quests and quests Questie marks as unobtainable. Class quests are filed under
-   their class (only that class sees them); a WoW Forever quest without a class in the data but
-   given only by one class's trainers counts as that class's quest.
+1. It keeps normal zone quests, class quests and profession quests. It leaves out repeatable
+   quests, placeholder quests and quests Questie marks as unobtainable. Class quests are filed
+   under their class (only that class sees them); a WoW Forever quest without a class in the data
+   but given only by one class's trainers counts as that class's quest. Profession quests are
+   filed under their profession (only characters with that profession see them).
 2. It links quests through their prerequisites, follow-up quests and child quests. Every
    connected group of two or more quests becomes one storyline. A quest that isn't linked to
    anything becomes a side quest.
@@ -113,8 +131,8 @@ dungeon, raid or battleground also gets that type.
    to shown in grey. Group totals count each storyline once.
 7. It names each storyline after its final quest, skipping generic names like "Return to …".
 
-The current data has **477 storylines and 1,034 side quests across 51 zones, 35 dungeons and
-raids, 3 battlegrounds and 9 classes**. 7 of WoW Forever's new dungeons have no quests in QuestieDB
+The current data has **489 storylines and 1,078 side quests across 48 zones, 35 dungeons and
+raids, 3 battlegrounds, 9 classes and 12 professions**. 7 of WoW Forever's new dungeons have no quests in QuestieDB
 yet. They are listed already and fill in when the data is regenerated after QuestieDB adds them.
 
 Because the storylines are generated, some may be off: a few chains get merged or split, and
@@ -140,9 +158,10 @@ python3 tools/show_story.py Westfall      # shows the quests of each storyline i
 
 Pushing the tag runs the **Release** GitHub workflow. It tests the addon, builds the zip, creates a
 GitHub release and uploads the version to CurseForge with its changelog section. It needs a
-`CF_API_TOKEN` secret and a `CF_PROJECT_ID` variable in the repository's Actions settings
-(`CF_RELEASE_TYPE` optionally switches from `beta` to `release`). You can also start it by hand
-under Actions → Release; by default that is a dry run.
+`CF_API_TOKEN` secret in the repository's Actions settings (the project ID is in `Storylines.toc`).
+Versions before 1.0.0 (and `-alpha`/`-beta` versions) upload as beta; later ones use the
+`CF_RELEASE_TYPE` variable (`release`). You can also start it by hand under Actions → Release,
+with a release type override; by default that is a dry run.
 
 ### Tests
 

@@ -1,8 +1,10 @@
 local _, ns = ...
 
-local ROW_HEIGHT = 20
+local BASE_ROW_HEIGHT = 20
+local ROW_HEIGHT = BASE_ROW_HEIGHT -- changes with the "Text size" setting
 local ZONE_LIST_WIDTH = 230
 local FRAME_WIDTH, FRAME_HEIGHT = 780, 540
+local MIN_WIDTH, MIN_HEIGHT = 700, 400
 
 local ICON_DONE = "Interface\\RaidFrame\\ReadyCheck-Ready"
 local ICON_ACTIVE = "Interface\\GossipFrame\\ActiveQuestIcon"
@@ -22,6 +24,49 @@ local COLOR_LOCKED = { 0.75, 0.75, 0.75 }
 local frame
 local expandedStories = {}
 local sideCollapsed = false
+
+---------------------------------------------------------------------------
+-- Text size: the lists use their own copies of the game fonts, scaled by the setting
+---------------------------------------------------------------------------
+
+local TEXT_SCALE = { small = 0.9, normal = 1, large = 1.15 }
+local fonts, fontBase = {}, {}
+
+function ns:TextScale()
+    return TEXT_SCALE[self.db and self.db.textSize] or 1
+end
+
+--- The scaled copy of a game font object (by name), e.g. ns:Font("GameFontHighlightSmall").
+function ns:Font(name)
+    local font = fonts[name]
+    if font then
+        return font
+    end
+    local base = _G[name]
+    if not (base and base.GetFont and CreateFont) then
+        return base or name
+    end
+    font = CreateFont("Storylines" .. name)
+    font:CopyFontObject(base)
+    fontBase[name] = { base:GetFont() }
+    fonts[name] = font
+    local file, size, flags = unpack(fontBase[name])
+    if file and size then
+        font:SetFont(file, size * self:TextScale(), flags or "")
+    end
+    return font
+end
+
+function ns:ApplyTextSize()
+    local scale = self:TextScale()
+    for name, font in pairs(fonts) do
+        local file, size, flags = unpack(fontBase[name])
+        if file and size then
+            font:SetFont(file, size * scale, flags or "")
+        end
+    end
+    ROW_HEIGHT = math.floor(BASE_ROW_HEIGHT * scale + 0.5)
+end
 
 ---------------------------------------------------------------------------
 -- Small widget helpers (plain frames only, so they work on any client UI)
@@ -128,13 +173,17 @@ local function CreateList(parent, initRow, updateRow)
             local row = self.rows[i]
             if not row then
                 row = CreateFrame("Button", nil, self)
-                row:SetHeight(ROW_HEIGHT)
-                row:SetPoint("TOPLEFT", 0, -(i - 1) * ROW_HEIGHT)
-                row:SetPoint("RIGHT", bar, "LEFT", -2, 0)
                 row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
                 row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
                 initRow(row)
                 self.rows[i] = row
+            end
+            if row.height ~= ROW_HEIGHT then
+                row.height = ROW_HEIGHT
+                row:SetHeight(ROW_HEIGHT)
+                row:ClearAllPoints()
+                row:SetPoint("TOPLEFT", 0, -(i - 1) * ROW_HEIGHT)
+                row:SetPoint("RIGHT", bar, "LEFT", -2, 0)
             end
             local item = self.items[self.offset + i]
             row.item = item
@@ -163,11 +212,13 @@ local function InitRow(row)
     row.icon:SetSize(14, 14)
     row.icon:SetPoint("LEFT", 4, 0)
 
-    row.right = row:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    row.right = row:CreateFontString(nil, "ARTWORK")
+    row.right:SetFontObject(ns:Font("GameFontHighlightSmall"))
     row.right:SetPoint("RIGHT", -4, 0)
     row.right:SetJustifyH("RIGHT")
 
-    row.text = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    row.text = row:CreateFontString(nil, "ARTWORK")
+    row.text:SetFontObject(ns:Font("GameFontHighlight"))
     row.text:SetPoint("LEFT", row.icon, "RIGHT", 4, 0)
     row.text:SetPoint("RIGHT", row.right, "LEFT", -6, 0)
     row.text:SetJustifyH("LEFT")
@@ -193,8 +244,7 @@ local function SetRow(row, opts)
         row.icon:SetTexture(nil)
         row.icon:SetSize(1, 14)
     end
-    local font = opts.font or "GameFontHighlight"
-    row.text:SetFontObject(_G[font] or font)
+    row.text:SetFontObject(ns:Font(opts.font or "GameFontHighlight"))
     row.text:SetText(opts.text or "")
     local c = opts.color or COLOR_WHITE
     row.text:SetTextColor(c[1], c[2], c[3])
@@ -235,10 +285,14 @@ local function BuildZoneItems()
         if total > 0 or sideTotal > 0 or zone.group == 3 then
             local group = zone.group
             byGroup[group] = byGroup[group] or {}
-            table.insert(byGroup[group], { type = "zone", areaID = areaID, done = done, total = total,
-                sideDone = sideDone, sideTotal = sideTotal, name = ns:GetZoneName(areaID) })
+            local finished = (total > 0 or sideTotal > 0) and done == total
+                and (sideDone == sideTotal or not ns.db.showSide)
+            if not (ns.db.hideFinishedZones and finished and areaID ~= ns.selectedArea) then
+                table.insert(byGroup[group], { type = "zone", areaID = areaID, done = done, total = total,
+                    sideDone = sideDone, sideTotal = sideTotal, name = ns:GetZoneName(areaID) })
+            end
             -- A storyline can be listed in two zones (where it is picked up and where it happens);
-            -- count it once in the group total.
+            -- count it once in the group total. Hidden finished zones still count.
             counted[group] = counted[group] or {}
             for _, story in ipairs(ns:GetZoneStories(areaID)) do
                 if not counted[group][story] then
@@ -338,16 +392,62 @@ end
 -- Story list (right)
 ---------------------------------------------------------------------------
 
+--- Whether the level filters ("Hide gray", "Hide far above my level") hide something whose quests
+-- range from level low to high. Callers never pass storylines or quests you have started.
+local function HiddenByLevel(low, high)
+    local db = ns.db
+    if not low or low <= 0 or (not db.hideTrivial and (db.maxLevelsAbove or 0) <= 0) then
+        return false
+    end
+    if db.hideTrivial and ns:GetLevelDifficulty(high) == "trivial" then
+        return true
+    end
+    return db.maxLevelsAbove > 0 and low - (UnitLevel("player") or 1) > db.maxLevelsAbove
+end
+
+--- Orders a zone's storylines by the "Sort storylines by" setting (they come in level order).
+local function SortStories(stories)
+    local by = ns.db.sortBy
+    if by ~= "name" and by ~= "progress" then
+        return stories
+    end
+    local info = {}
+    for i, story in ipairs(stories) do
+        local done, total, started = ns:GetStoryProgress(story)
+        local complete = total > 0 and done == total
+        -- progress: storylines you are on first (furthest along first), then new ones, then finished ones
+        info[story] = { index = i, rank = complete and 3 or (started and 1 or 2), share = total > 0 and done / total or 0 }
+    end
+    table.sort(stories, function(a, b)
+        local ia, ib = info[a], info[b]
+        if by == "name" then
+            if a.name ~= b.name then
+                return a.name < b.name
+            end
+        elseif ia.rank ~= ib.rank then
+            return ia.rank < ib.rank
+        elseif ia.rank == 1 and ia.share ~= ib.share then
+            return ia.share > ib.share
+        end
+        return ia.index < ib.index
+    end)
+    return stories
+end
+
 local function BuildStoryItems(areaID)
     local items = {}
     local db = ns.db
-    local stories = ns:GetZoneStories(areaID, db.showIgnored)
-    local shownStories = 0
+    local stories = SortStories(ns:GetZoneStories(areaID, db.showIgnored))
+    local shownStories, filtered = 0, 0
     for _, story in ipairs(stories) do
         local done, total, started = ns:GetStoryProgress(story)
         local complete = total > 0 and done == total
         local ignored = ns:IsStoryIgnored(story)
-        if not (db.hideCompleted and complete) then
+        local hidden = db.hideCompleted and complete
+        if not hidden and not started and not complete and HiddenByLevel(ns:GetStoryLevelRange(story)) then
+            hidden, filtered = true, filtered + 1
+        end
+        if not hidden then
             shownStories = shownStories + 1
             local expanded = expandedStories[story.key]
             table.insert(items, { type = "story", story = story, done = done, total = total, started = started,
@@ -375,13 +475,18 @@ local function BuildStoryItems(areaID)
             or (hasSide and "No storylines here, only side quests (below).")
             or (isDungeon and "No quests are known for this dungeon yet. They will appear in an update.")
             or "No storylines in this zone for your character." })
+    elseif shownStories == 0 and filtered > 0 then
+        table.insert(items, { type = "note", text = "All storylines left here are hidden by your level filters." })
     elseif shownStories == 0 then
         table.insert(items, { type = "note", text = "All storylines here are complete!" })
+    elseif filtered > 0 then
+        table.insert(items, { type = "note", text = ("%d more storyline%s hidden by your level filters."):format(
+            filtered, filtered == 1 and "" or "s") })
     end
 
     if db.showSide then
         local side = ns:GetZoneSideQuests(areaID)
-        local list, done, total = {}, 0, 0
+        local list, done, total, sideFiltered = {}, 0, 0, 0
         for _, entry in ipairs(side) do
             local ignored = ns:IsQuestIgnored(entry.questID)
             if not ignored then
@@ -391,7 +496,12 @@ local function BuildStoryItems(areaID)
                 end
             end
             if (db.showIgnored or not ignored) and not (db.hideCompleted and entry.state == ns.STATE_DONE) then
-                table.insert(list, entry)
+                local level = ns:GetQuestLevel(entry.questID)
+                if entry.state == ns.STATE_TODO and HiddenByLevel(level, level) then
+                    sideFiltered = sideFiltered + 1
+                else
+                    table.insert(list, entry)
+                end
             end
         end
         if total > 0 or #list > 0 then
@@ -402,6 +512,10 @@ local function BuildStoryItems(areaID)
                     table.insert(items, { type = "side", questID = entry.questID, state = entry.state,
                         elsewhere = entry.homeZone })
                 end
+                if sideFiltered > 0 then
+                    table.insert(items, { type = "note", text = ("%d more side quest%s hidden by your level filters."):format(
+                        sideFiltered, sideFiltered == 1 and "" or "s") })
+                end
             end
         end
     end
@@ -410,7 +524,8 @@ end
 
 --- Quest icon like the game's: yellow "?" ready to turn in, grey "?" in progress,
 -- yellow "!" can be picked up now, grey "!" not available yet.
--- @return icon, desaturated, availability ("available" / "locked" / "reputation" / "level" for quests not started),
+-- @return icon, desaturated, availability ("available" / "locked" / "reputation" / "level" / "skill" for quests
+--   not started),
 --   and the availability detail (required level, or the reputation problem)
 function ns:GetQuestIcon(questID, state)
     if state == ns.STATE_DONE then
@@ -480,6 +595,8 @@ local function UpdateStoryRow(row, item)
             right = "|cffffd100in log|r"
         elseif availability == "level" then
             right = "|cffff4040level " .. detail .. "|r"
+        elseif availability == "skill" then
+            right = "|cffff4040" .. ns:GetProfessionName(detail.skill) .. " " .. detail.level .. "|r"
         elseif availability == "reputation" then
             right = "|cffff4040" .. (detail.tooHigh and "rep too high" or ("needs " .. ns:FormatReputation(detail.required)))
                 .. "|r"
@@ -623,27 +740,56 @@ local function CreateMainFrame()
     f:SetToplevel(true)
     f:SetClampedToScreen(true)
     f:SetMovable(true)
+    f:SetResizable(true)
+    if f.SetResizeBounds then
+        f:SetResizeBounds(MIN_WIDTH, MIN_HEIGHT)
+    elseif f.SetMinResize then
+        f:SetMinResize(MIN_WIDTH, MIN_HEIGHT)
+    end
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", function(self)
+
+    local function saveGeometry(self)
         self:StopMovingOrSizing()
         local point, _, relPoint, x, y = self:GetPoint()
         ns.db.position = { point, relPoint, x, y }
+        ns.db.size = { math.floor(self:GetWidth() + 0.5), math.floor(self:GetHeight() + 0.5) }
         if ns.RefreshInspector then
             ns:RefreshInspector(true) -- re-dock on the side that has room
         end
+    end
+    f:SetScript("OnDragStart", function(self)
+        if not ns.db.locked then
+            self:StartMoving()
+        end
     end)
+    f:SetScript("OnDragStop", saveGeometry)
     SetBackdropSafe(f, "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
         "Interface\\DialogFrame\\UI-DialogBox-Border", 32, 11)
     f:Hide()
-    tinsert(UISpecialFrames, "StorylinesFrame")
 
-    if ns.db.position then
-        local p = ns.db.position
-        f:ClearAllPoints()
-        f:SetPoint(p[1], UIParent, p[2], p[3], p[4])
-    end
+    -- Resize grip in the bottom-right corner.
+    local grip = CreateFrame("Button", nil, f)
+    grip:SetSize(16, 16)
+    grip:SetPoint("BOTTOMRIGHT", -5, 5)
+    grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+    grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+    grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+    grip:SetScript("OnMouseDown", function()
+        if not ns.db.locked then
+            f:StartSizing("BOTTOMRIGHT")
+        end
+    end)
+    grip:SetScript("OnMouseUp", function()
+        saveGeometry(f)
+    end)
+    grip:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Drag to resize", 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    grip:SetScript("OnLeave", GameTooltip_Hide)
+    f.resizeGrip = grip
 
     local title = f:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     title:SetPoint("TOP", 0, -18)
@@ -658,8 +804,8 @@ local function CreateMainFrame()
     zonePanel:SetPoint("BOTTOMLEFT", 16, 48)
     zonePanel:SetWidth(ZONE_LIST_WIDTH)
     SetBackdropSafe(zonePanel, "Interface\\Tooltips\\UI-Tooltip-Background", "Interface\\Tooltips\\UI-Tooltip-Border", 14, 3)
-    zonePanel:SetBackdropColor(0, 0, 0, 0.5)
     zonePanel:SetBackdropBorderColor(0.6, 0.6, 0.6, 0.8)
+    f.zonePanel = zonePanel
 
     f.zoneList = CreateList(zonePanel, function(row)
         InitRow(row)
@@ -675,8 +821,8 @@ local function CreateMainFrame()
     detail:SetPoint("TOPLEFT", zonePanel, "TOPRIGHT", 8, 0)
     detail:SetPoint("BOTTOMRIGHT", -16, 48)
     SetBackdropSafe(detail, "Interface\\Tooltips\\UI-Tooltip-Background", "Interface\\Tooltips\\UI-Tooltip-Border", 14, 3)
-    detail:SetBackdropColor(0, 0, 0, 0.5)
     detail:SetBackdropBorderColor(0.6, 0.6, 0.6, 0.8)
+    f.detailPanel = detail
 
     f.zoneTitle = detail:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     f.zoneTitle:SetPoint("TOPLEFT", 12, -10)
@@ -741,10 +887,12 @@ local function CreateMainFrame()
         end)
     autoZone:SetPoint("LEFT", showIgnored.label, "RIGHT", 16, -1)
     autoZone:SetChecked(ns.db.autoZone)
+    -- Kept in sync with the options page (see ApplyWindowSettings).
+    f.checks = { hideCompleted = hideCompleted, showSide = showSide, showIgnored = showIgnored, autoZone = autoZone }
 
     local currentButton = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     currentButton:SetSize(120, 22)
-    currentButton:SetPoint("BOTTOMRIGHT", -18, 16)
+    currentButton:SetPoint("BOTTOMRIGHT", -24, 16)
     currentButton:SetText("Current Zone")
     currentButton:SetScript("OnClick", function()
         local areaID = ns:GetCurrentArea()
@@ -759,6 +907,58 @@ local function CreateMainFrame()
         ns:RefreshUI()
     end)
     return f
+end
+
+local function SetEscapeCloses(enabled)
+    for i = #UISpecialFrames, 1, -1 do
+        if UISpecialFrames[i] == "StorylinesFrame" then
+            table.remove(UISpecialFrames, i)
+        end
+    end
+    if enabled then
+        tinsert(UISpecialFrames, "StorylinesFrame")
+    end
+end
+
+--- Applies the window settings (size, position, scale, opacity, lock, Escape) to the main window.
+function ns:ApplyWindowSettings()
+    if not frame then
+        return
+    end
+    local db = self.db
+    frame:SetScale(db.scale or 1)
+    local size = db.size
+    frame:SetSize(math.max(MIN_WIDTH, size and size[1] or FRAME_WIDTH), math.max(MIN_HEIGHT, size and size[2] or FRAME_HEIGHT))
+    frame:ClearAllPoints()
+    local p = db.position
+    if p then
+        frame:SetPoint(p[1], UIParent, p[2], p[3], p[4])
+    else
+        frame:SetPoint("CENTER")
+    end
+    local alpha = db.bgAlpha or 1
+    frame:SetBackdropColor(1, 1, 1, alpha)
+    frame.zonePanel:SetBackdropColor(0, 0, 0, 0.5 * alpha)
+    frame.detailPanel:SetBackdropColor(0, 0, 0, 0.5 * alpha)
+    frame.resizeGrip:SetShown(not db.locked)
+    SetEscapeCloses(db.escClose)
+    for key, check in pairs(frame.checks) do
+        check:SetChecked(db[key])
+    end
+end
+
+--- Applies every setting after it changed (options page, reset).
+function ns:ApplySettings()
+    self:ApplyTextSize()
+    self:ApplyWindowSettings()
+    if self.UpdateMinimapButton then
+        self:UpdateMinimapButton()
+    end
+    if frame and frame:IsShown() then
+        -- Rows are re-laid out with the new text size.
+        frame.zoneList:Update()
+        self:RefreshUI(true)
+    end
 end
 
 ---------------------------------------------------------------------------
@@ -838,6 +1038,8 @@ end
 function ns:ShowUI(areaID)
     if not frame then
         frame = CreateMainFrame()
+        self:ApplyTextSize()
+        self:ApplyWindowSettings()
     end
     if not areaID then
         -- Prefer the zone shown on an open world map, then the player's zone.

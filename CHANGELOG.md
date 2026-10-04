@@ -2,6 +2,36 @@
 
 All notable changes to Storylines. The newest version is at the top.
 
+## [0.5.0] - Unreleased
+
+### Added
+- **Options page** under Options → AddOns → Storylines. Open it with `/stl options` or by
+  right-clicking the minimap button.
+  - **Window:** scale, background opacity, text size, which side the details panel opens on,
+    lock window, close with Escape, and reset size and position.
+  - **Lists:** hide completed, side quests, show ignored and follow my zone, plus the new list
+    options below.
+  - **Notifications:** chat messages, reputation warnings (chat, screen, both or off) and the
+    storyline-complete sound.
+  - **Map:** show the minimap button, and use TomTom or the game's map pin for waypoints.
+  - **Clear ignored** quests and storylines, and **reset to defaults**.
+- **Resizable window.** Drag the bottom-right corner. The size and position are remembered.
+- **Professions.** Profession quests have their own **Professions** group, one entry per
+  profession (Blacksmithing, Cooking, Engineering…). Only the professions you have learned are
+  listed; an option shows them all. Quests show the skill they need, e.g. "needs Cooking 50".
+- **Hide gray (too low level) quests** and **hide quests far above your level.** Both apply to
+  storylines and side quests. The ones you have started are always shown.
+- **Sort storylines** by level, name or progress.
+- **Hide finished zones** in the zone list.
+- **Show quest IDs** next to quest names.
+
+### Changed
+- The storyline-complete sound has its own setting, so it can play without chat messages.
+
+### Fixed
+- **Quests for several classes** (e.g. **The Forging of Quel'Serrar** for warriors and paladins) no
+  longer show another class's name next to them. They are listed as your own class's quests.
+
 ## [0.4.0] - 2026-10-04
 
 ### Added

@@ -59,6 +59,11 @@ local function newObject(kind, name)
     function methods:GetPoint() return "CENTER", nil, "CENTER", 0, 0 end
     function methods:GetCenter() return 0, 0 end
     function methods:GetEffectiveScale() return 1 end
+    function methods:SetScale(v) self.__scale = v end
+    function methods:GetScale() return self.__scale or 1 end
+    function methods:SetBackdropColor(r, g, b, a) self.__bgAlpha = a end
+    function methods:SetFont(file, size, flags) self.__font = { file, size, flags } end
+    function methods:GetFont() if self.__font then return unpack(self.__font) end end
     function methods:GetMapID() return 1436 end
     -- Unknown widget methods (capitalised names) are no-ops; other missing fields are nil, like real frames.
     return setmetatable(o, { __index = function(_, k)
@@ -80,6 +85,25 @@ function CreateFrame(kind, name, parent, template)
 end
 
 UIParent = CreateFrame("Frame", "UIParent")
+__skills = {}
+function GetNumSkillLines() return #__skills end
+function GetSkillLineInfo(i) local l = __skills[i] return l[1], l[2], l[3], l[4] end
+function CreateFont(name) local f = newObject("Font", name); _G[name] = f; return f end
+for _, name in ipairs({ "GameFontNormal", "GameFontHighlight", "GameFontHighlightSmall", "GameFontNormalLarge",
+                        "GameFontDisable", "GameFontDisableSmall" }) do
+    CreateFont(name):SetFont("Fonts\\FRIZQT__.TTF", name:find("Small") and 10 or 12, "")
+end
+-- Settings window: OpenToCategory shows the registered canvas.
+__settingsPanels = {}
+Settings = {
+    RegisterCanvasLayoutCategory = function(frame, name)
+        local id = #__settingsPanels + 1
+        __settingsPanels[id] = frame
+        return { ID = id, GetID = function(self) return self.ID end, name = name }
+    end,
+    RegisterAddOnCategory = function() end,
+    OpenToCategory = function(id) __settingsPanels[id]:Hide() __settingsPanels[id]:Show() end,
+}
 Minimap = CreateFrame("Frame", "Minimap")
 GameTooltip = CreateFrame("GameTooltip", "GameTooltip")
 DEFAULT_CHAT_FRAME = { AddMessage = function(_, msg) printed[#printed + 1] = msg end }
@@ -636,6 +660,22 @@ def main():
         __class = 1 ns:UpdatePlayerInfo()
         return found""")
     check(sw is not None, "paladin storylines also show in Stormwind City, where they start (%s)" % sw)
+    shared = lua_do("""local ns = ...
+        -- The Forging of Quel'Serrar is for warriors and paladins: each sees it as their own class's.
+        local out = {}
+        for _, cls in ipairs({ 2, 1 }) do
+            __faction, __race, __class = 'Alliance', 1, cls ns:UpdatePlayerInfo()
+            local area = 100000 + 2 ^ (cls - 1)
+            for _, s in ipairs(ns:GetZoneStories(area)) do
+                if s.name == "The Forging of Quel'Serrar" then
+                    out[#out + 1] = ns:GetZoneName(area) .. '=' .. ns:GetZoneName(s.zone)
+                end
+            end
+        end
+        __class = 1 ns:UpdatePlayerInfo()
+        return table.concat(out, ',')""")
+    check(shared == "Paladin=Paladin,Warrior=Warrior",
+          "a quest for several classes belongs to the player's own class (%s)" % shared)
 
     print("Dungeons:")
     wc = lua_do("""local ns = ...
@@ -701,6 +741,208 @@ def main():
     check("Deeprun Tram" not in names, "Deeprun Tram is not a dungeon")
     check("no quests yet" in empty_text, "dungeons without known quests say so in the list (%s)" % empty_text)
     check("+note" in empty_text, "and in the storyline panel")
+
+    print("Settings:")
+    lua_do("""local ns = ...
+        __faction, __race, __class, __level = 'Alliance', 1, 1, 20 ns:UpdatePlayerInfo()
+        ns:ShowUI(40) ns:RefreshUI()""")
+    page = lua_do("""local ns = ...
+        ns:OpenOptions()
+        return __visibleText(StorylinesOptionsPanel)""")
+    for needle in ("Background opacity", "Text size", "Details panel", "Lock window", "Reputation warnings",
+                   "Hide gray (too low level) quests", "Sort storylines by", "Show quest IDs", "Ignored: 0 storylines",
+                   "All Storylines settings", "Show minimap button", "Waypoints"):
+        check(needle in page, "the options page shows " + needle)
+    window = lua_do("""local ns = ...
+        local db, f = ns.db, StorylinesFrame
+        db.scale, db.bgAlpha, db.locked, db.escClose, db.textSize = 1.2, 0.4, true, false, 'large'
+        ns:ApplySettings()
+        local inEsc = false
+        for _, name in ipairs(UISpecialFrames) do inEsc = inEsc or name == 'StorylinesFrame' end
+        local _, size = StorylinesGameFontHighlight:GetFont()
+        local out = { f:GetScale(), f.__bgAlpha, tostring(f.resizeGrip:IsShown()), tostring(inEsc), size }
+        db.scale, db.bgAlpha, db.locked, db.escClose, db.textSize = 1, 1, false, true, 'normal'
+        ns:ApplySettings()
+        inEsc = false
+        for _, name in ipairs(UISpecialFrames) do inEsc = inEsc or name == 'StorylinesFrame' end
+        out[#out + 1] = tostring(inEsc)
+        _, out[#out + 1] = StorylinesGameFontHighlight:GetFont()
+        return table.concat(out, ' ')""")
+    check(window == "1.2 0.4 false false 13.8 true 12",
+          "scale, opacity, lock, Escape and text size apply to the window (%s)" % window)
+    sized = lua_do("""local ns = ...
+        local f = StorylinesFrame
+        f:SetSize(900, 600)
+        f.resizeGrip:GetScript('OnMouseUp')(f.resizeGrip)
+        local saved = ns.db.size[1] .. 'x' .. ns.db.size[2]
+        ns.db.size, ns.db.position = nil, nil
+        ns:ApplySettings()
+        return saved .. ' ' .. f:GetWidth() .. 'x' .. f:GetHeight()""")
+    check(sized == "900x600 780x540", "the window size is remembered and can be reset (%s)" % sized)
+
+    def story_names(setup):
+        return lua_do("""local ns = ...
+            %s
+            ns:RefreshUI()
+            local out = {}
+            for _, item in ipairs(StorylinesFrame.storyList.items) do
+                if item.type == 'story' then out[#out + 1] = item.story.name
+                elseif item.type == 'note' then out[#out + 1] = 'NOTE:' .. item.text end
+            end
+            ns.db.hideTrivial, ns.db.maxLevelsAbove, ns.db.sortBy, __level = false, 0, 'level', 20
+            return table.concat(out, '|')""" % setup)
+    by_level = story_names("")
+    check(by_level and "NOTE" not in by_level, "Westfall lists its storylines with no filter note")
+    trivial = story_names("ns.db.hideTrivial, __level = true, 60")
+    # The Defias Brotherhood was started by earlier checks: started storylines always stay listed.
+    check(trivial.startswith("The Defias Brotherhood|NOTE:%d more storylines hidden by your level filters.|NOTE:" % (
+          by_level.count("|"))) and "side quests hidden" in trivial,
+          "gray storylines and side quests are hidden for a level 60, except started ones (%s)" % trivial[:120])
+    above = story_names("ns.db.maxLevelsAbove, __level = 3, 6")
+    check("hidden by your level filters" in above and above.count("|") < by_level.count("|"),
+          "storylines far above your level are hidden (%s)" % above[:80])
+    side = lua_do("""local ns = ...
+        -- Westfall side quests: all listed normally, hidden at level 6 with a 3-level limit
+        local function count(setup)
+            ns.db.maxLevelsAbove, __level = setup[1], setup[2]
+            ns:RefreshUI()
+            local n, note = 0, ''
+            for _, item in ipairs(StorylinesFrame.storyList.items) do
+                if item.type == 'side' then n = n + 1 end
+                if item.type == 'note' and item.text:find('side quest') then note = item.text end
+            end
+            return n, note
+        end
+        local before = count({ 0, 20 })
+        local after, note = count({ 3, 6 })
+        ns.db.maxLevelsAbove, __level = 0, 20
+        return before .. '>' .. after .. ' ' .. note""")
+    before, after = map(int, side.split(" ")[0].split(">"))
+    check(after < before and "side quests hidden" in side,
+          "the level filters hide side quests too (%s)" % side)
+    by_name = [n for n in story_names("ns.db.sortBy = 'name'").split("|") if not n.startswith("NOTE")]
+    check(by_name == sorted(by_name) and len(by_name) > 3, "storylines can be sorted by name")
+    ids = lua_do("""local ns = ...
+        ns.db.showQuestIDs = true
+        local line = ns:FormatQuestLine(166)
+        ns.db.showQuestIDs = false
+        return line""")
+    check("#166" in ids, "quest IDs are shown when enabled (%s)" % ids)
+    finished = lua_do("""local ns = ...
+        -- finish everything in Westfall, then select another zone: Westfall disappears from the list
+        local function listed(areaID)
+            for _, item in ipairs(StorylinesFrame.zoneList.items) do
+                if item.areaID == areaID then return true end
+            end
+            return false
+        end
+        for _, story in ipairs(ns:GetZoneStories(40)) do
+            for _, step in ipairs(story.steps) do for _, id in ipairs(ns.StepIDs(step)) do __completed[id] = true end end
+        end
+        for _, entry in ipairs(ns:GetZoneSideQuests(40)) do __completed[entry.questID] = true end
+        ns:InvalidateProgress()
+        ns.db.hideFinishedZones = true
+        ns:ShowUI(12) ns:RefreshUI()
+        local hidden = not listed(40)
+        ns:ShowUI(40) ns:RefreshUI()
+        local selectedShown = listed(40)
+        ns.db.hideFinishedZones = false
+        __completed = {} ns:InvalidateProgress()
+        return tostring(hidden) .. ' ' .. tostring(selectedShown)""")
+    check(finished == "true true", "finished zones can be hidden, except the selected one (%s)" % finished)
+    warn = lua_do("""local ns = ...
+        local before, errors = #__printed, #__errors
+        ns.db.repWarnings = 'chat'
+        ns:WarnReputation(999001, { factionID = 72, required = 9000, current = 0 }, 'x ', '')
+        ns.db.repWarnings = 'screen'
+        ns:WarnReputation(999002, { factionID = 72, required = 9000, current = 0 }, 'x ', '')
+        ns.db.repWarnings = 'off'
+        ns:WarnReputation(999003, { factionID = 72, required = 9000, current = 0 }, 'x ', '')
+        ns.db.repWarnings = 'both'
+        return (#__printed - before) .. ' ' .. (#__errors - errors)""")
+    check(warn == "1 1", "reputation warnings can go to chat only, screen only, or nowhere (%s)" % warn)
+    dropdown = lua_do("""local ns = ...
+        -- open the "Sort storylines by" dropdown and pick Name
+        local function find(f, text)
+            for _, c in ipairs(f.__children or {}) do
+                if c.text and c.text.__text == text and c.__shown then return c end
+                local found = find(c, text) if found then return found end
+            end
+        end
+        find(StorylinesOptionsPanel, 'Level'):GetScript('OnClick')(find(StorylinesOptionsPanel, 'Level'))
+        find(StorylinesOptionsMenu, 'Name'):GetScript('OnClick')()
+        local picked = ns.db.sortBy
+        ns.db.sortBy = 'level'
+        return picked""")
+    check(dropdown == "name", "dropdowns on the options page change the setting (%s)" % dropdown)
+    reset = lua_do("""local ns = ...
+        ns.db.ignoredQuests[123] = true
+        ns.db.scale, ns.db.minimap.hide, ns.db.minimap.angle = 1.3, true, 90
+        ns:ResetSettings() ns:ApplySettings()
+        local out = ns.db.scale .. ' ' .. tostring(ns.db.minimap.hide) .. ' ' .. ns.db.minimap.angle .. ' '
+            .. tostring(ns.db.ignoredQuests[123])
+        ns:ClearIgnored()
+        return out""")
+    check(reset == "1 false 90 true", "reset to defaults keeps ignored quests and the minimap position (%s)" % reset)
+
+    print("Professions:")
+    prof = lua_do("""local ns = ...
+        local function groupEntries()
+            ns.db.collapsedGroups[6] = false
+            ns:RefreshUI()
+            local out = {}
+            for _, item in ipairs(StorylinesFrame.zoneList.items) do
+                if item.type == 'zone' and ns.Zones[item.areaID].group == 6 then out[#out + 1] = item.name end
+            end
+            return table.concat(out, ',')
+        end
+        local result = {}
+        -- Classic skill list: no professions, then Cooking 40.
+        __skills = {}
+        ns:UpdateProfessions()
+        result[#result + 1] = groupEntries() .. '/' .. tostring(ns:IsQuestForPlayer(90))
+        __skills = { { 'Professions', true }, { 'Cooking', false, false, 40 } }
+        ns:UpdateProfessions()
+        result[#result + 1] = groupEntries() .. '/' .. tostring(ns:IsQuestForPlayer(90))
+            .. '/' .. table.concat({ ns:GetQuestAvailability(90) and ns:GetQuestAvailability(90) }, '')
+        local _, detail = ns:GetQuestAvailability(90)
+        result[#result + 1] = detail and (detail.level .. '>' .. detail.rank) or 'nil'
+        ns.db.showAllProfessions = true
+        ns:InvalidateProgress()
+        local all = groupEntries()
+        result[#result + 1] = select(2, all:gsub(',', ',')) + 1
+        ns.db.showAllProfessions = false
+        __skills = {}
+        ns:UpdateProfessions()
+        return table.concat(result, ' ')""")
+    print("   " + str(prof))
+    parts = str(prof).split(" ")
+    check(parts[0] == "/false", "no Professions entries and no profession quests without professions (%s)" % parts[0])
+    check(parts[1] == "Cooking/true/skill", "a cook sees Cooking and its quests (%s)" % parts[1])
+    check(parts[2] == "50>40", "a profession quest needs the skill level (%s)" % parts[2])
+    check(parts[3] == "12", "all 12 professions can be shown (%s)" % parts[3])
+    detail_text = lua_do("""local ns = ...
+        __skills = { { 'Cooking', false, false, 40 } }
+        ns:UpdateProfessions()
+        ns:InspectQuest(90)
+        local text = __visibleText(StorylinesInspector)
+        __skills = {}
+        ns:UpdateProfessions()
+        ns:CloseInspector()
+        return text""")
+    check("Profession: Cooking 50 |cffff4040(you have 40)|r" in detail_text, "quest details show the profession requirement")
+    modern = lua_do("""local ns = ...
+        -- Modern clients: GetProfessions / GetProfessionInfo give skill line IDs directly.
+        GetProfessions = function() return 3, nil, nil, nil, 5 end
+        GetProfessionInfo = function(i) if i == 3 then return 'Blacksmithing', 0, 120, 150, 0, 0, 164 end
+            return 'Cooking', 0, 60, 75, 0, 0, 185 end
+        ns:UpdateProfessions()
+        local out = tostring(ns:GetProfessionRank(164)) .. ',' .. tostring(ns:GetProfessionRank(185)) .. ','
+            .. tostring(ns:GetProfessionRank(197))
+        GetProfessions, GetProfessionInfo = nil, nil
+        ns:UpdateProfessions()
+        return out""")
+    check(modern == "120,60,false", "professions are read from the modern API too (%s)" % modern)
 
     print("Data sanity:")
     bad = lua_do("""local ns = ...

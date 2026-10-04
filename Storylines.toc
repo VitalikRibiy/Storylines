@@ -18,3 +18,4 @@ QuestInfo.lua
 UI.lua
 Inspector.lua
 Minimap.lua
+Options.lua

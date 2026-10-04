@@ -23,7 +23,7 @@ def run(*cmd):
 
 
 def main():
-    if len(sys.argv) != 2 or not re.fullmatch(r"\d+\.\d+\.\d+", sys.argv[1]):
+    if len(sys.argv) != 2 or not re.fullmatch(r"\d+\.\d+\.\d+(-(alpha|beta)\.\d+)?", sys.argv[1]):
         sys.exit(__doc__)
     version = sys.argv[1]
     if subprocess.run(["git", "status", "--porcelain"], cwd=ROOT, capture_output=True, text=True).stdout.strip():

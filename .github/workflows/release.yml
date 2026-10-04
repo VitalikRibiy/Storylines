@@ -6,7 +6,8 @@
 # Repository settings needed (Settings -> Secrets and variables -> Actions):
 #   secret   CF_API_TOKEN     CurseForge API token (CurseForge: My Account -> API Tokens)
 #   variable CF_PROJECT_ID    CurseForge project ID (or "## X-Curse-Project-ID" in Storylines.toc)
-#   variable CF_RELEASE_TYPE  alpha, beta or release (optional, default beta)
+#   variable CF_RELEASE_TYPE  alpha, beta or release for versions 1.0.0 and later (optional, default beta).
+#                             0.x versions always upload as beta; "-alpha"/"-beta" versions use that type.
 name: Release
 
 on:
@@ -18,6 +19,11 @@ on:
         description: "Only build and check, don't upload"
         type: boolean
         default: true
+      release_type:
+        description: "CurseForge release type (auto: beta for 0.x, otherwise CF_RELEASE_TYPE)"
+        type: choice
+        options: [auto, alpha, beta, release]
+        default: auto
 
 permissions:
   contents: write
@@ -71,6 +77,7 @@ jobs:
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CF_PROJECT_ID: ${{ vars.CF_PROJECT_ID }}
           CF_RELEASE_TYPE: ${{ vars.CF_RELEASE_TYPE }}
+          RELEASE_TYPE: ${{ inputs.release_type }}
           DRY_RUN: ${{ github.ref_type != 'tag' && inputs.dry_run }}
         run: |
           python tools/curseforge_upload.py --zip "dist/Storylines-${{ steps.version.outputs.version }}.zip" \

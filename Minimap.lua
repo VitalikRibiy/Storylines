@@ -31,7 +31,7 @@ local function ShowTooltip(owner, anchor)
         end
     end
     GameTooltip:AddLine(" ")
-    GameTooltip:AddLine("Click to open. Drag to move.", 0.6, 0.6, 0.6)
+    GameTooltip:AddLine("Click to open. Right-click for options. Drag to move.", 0.6, 0.6, 0.6)
     GameTooltip:Show()
 end
 
@@ -63,8 +63,12 @@ function ns:InitMinimapButton()
     icon:SetTexCoord(0.05, 0.95, 0.05, 0.95)
     icon:SetPoint("TOPLEFT", 7, -6)
 
-    button:SetScript("OnClick", function()
-        ns:ToggleUI()
+    button:SetScript("OnClick", function(_, mouseButton)
+        if mouseButton == "RightButton" then
+            ns:OpenOptions()
+        else
+            ns:ToggleUI()
+        end
     end)
     button:SetScript("OnDragStart", function(self)
         self:SetScript("OnUpdate", OnDragUpdate)
@@ -88,8 +92,12 @@ function ns:UpdateMinimapButton()
 end
 
 -- Addon compartment (the addon list button on the minimap, when the client has one).
-function Storylines_OnAddonCompartmentClick()
-    ns:ToggleUI()
+function Storylines_OnAddonCompartmentClick(_, mouseButton)
+    if mouseButton == "RightButton" then
+        ns:OpenOptions()
+    else
+        ns:ToggleUI()
+    end
 end
 
 function Storylines_OnAddonCompartmentEnter(_, menuButton)

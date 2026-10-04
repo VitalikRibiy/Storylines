@@ -10,17 +10,36 @@ ns.GROUP_NAMES = {
     [3] = "Dungeons & Raids",
     [4] = "Battlegrounds",
     [5] = "Class Quests",
+    [6] = "Professions",
 }
 
 local CHAT_PREFIX = "|cff33ff99Storylines:|r "
 
 local defaults = {
+    -- Lists
     hideCompleted = false,
     showSide = true,
     autoZone = true,
-    announce = true,
-    repWarnings = true,
     showIgnored = false,
+    hideTrivial = false,     -- hide storylines whose quests are all gray (too low level)
+    maxLevelsAbove = 0,      -- hide storylines starting more than this many levels above you (0 = off)
+    sortBy = "level",        -- "level" | "name" | "progress"
+    hideFinishedZones = false,
+    showQuestIDs = false,
+    showAllProfessions = false, -- list professions this character hasn't learned too
+    -- Window (size and position are stored as db.size / db.position once changed)
+    scale = 1,
+    bgAlpha = 1,
+    textSize = "normal",     -- "small" | "normal" | "large"
+    detailsSide = "auto",    -- "auto" | "right" | "left"
+    locked = false,
+    escClose = true,
+    -- Notifications
+    announce = true,
+    repWarnings = "both",    -- "both" | "chat" | "screen" | "off"
+    completeSound = true,
+    -- Map
+    waypoints = "tomtom",    -- "tomtom" (TomTom when installed) | "map" (the game's map pin)
     minimap = { angle = 215, hide = false },
     ignoredQuests = {},
     ignoredStories = {},
@@ -46,13 +65,37 @@ function ns:Print(msg)
     DEFAULT_CHAT_FRAME:AddMessage(CHAT_PREFIX .. msg)
 end
 
+--- Puts every setting back to its default; keeps the ignored lists and collapsed groups.
+function ns:ResetSettings()
+    local keep = { ignoredQuests = true, ignoredStories = true, collapsedGroups = true }
+    local minimapAngle = self.db.minimap and self.db.minimap.angle
+    for k in pairs(self.db) do
+        if not keep[k] then
+            self.db[k] = nil
+        end
+    end
+    applyDefaults(self.db, defaults)
+    self.db.minimap.angle = minimapAngle or self.db.minimap.angle
+end
+
+function ns:ClearIgnored()
+    wipe(self.db.ignoredQuests)
+    wipe(self.db.ignoredStories)
+    self:InvalidateProgress()
+    if self.RefreshUI then
+        self:RefreshUI(true)
+    end
+end
+
 ---------------------------------------------------------------------------
 -- Data index
 ---------------------------------------------------------------------------
 
 ns.storiesByQuest = {} -- questID -> { story, ... }
 ns.storyByKey = {}     -- story key (lowest quest ID) -> story
-ns.sideZoneByQuest = {} -- side quest ID -> areaID it is filed under
+ns.sideZoneByQuest = {} -- side quest ID -> areaID it belongs to (for this character, see UpdatePlayerInfo)
+local sideHomeZone = {}  -- side quest ID -> areaID it is filed under in the data
+local sideClassZones = {} -- side quest ID -> { classFile -> class areaID listing it }
 ns.areaByMap = {}      -- uiMapID -> areaID
 ns.areaByName = {}     -- lower-case zone name -> areaID
 
@@ -70,7 +113,7 @@ function ns:BuildIndex()
         for i, raw in ipairs(zone.stories) do
             -- raw[3] is the name Horde players see when it differs (a storyline shared by both factions).
             local story = { name = raw[1], nameAlliance = raw[1], nameHorde = raw[3] or raw[1],
-                            steps = raw[2], zone = areaID }
+                            steps = raw[2], zone = areaID, homeZone = areaID, classZones = {} }
             local key
             for _, step in ipairs(story.steps) do
                 for _, questID in ipairs(stepIDs(step)) do
@@ -88,6 +131,7 @@ function ns:BuildIndex()
             self.storyByKey[key] = story
         end
         for _, step in ipairs(zone.side) do
+            sideHomeZone[stepIDs(step)[1]] = areaID
             self.sideZoneByQuest[stepIDs(step)[1]] = areaID
         end
         if zone.uiMap and zone.uiMap > 0 then
@@ -101,13 +145,26 @@ function ns:BuildIndex()
         local q = self.Quests[stepIDs(step)[1]]
         return q and q[2] or 0
     end
-    for _, zone in pairs(self.Zones) do
+    for areaID, zone in pairs(self.Zones) do
         local all = {}
         for _, story in ipairs(zone.stories) do
             all[#all + 1] = story
         end
         for _, key in ipairs(zone.also or {}) do
             all[#all + 1] = self.storyByKey[key]
+        end
+        if zone.classFile then
+            -- Quests for several classes are filed under one class and listed under the others.
+            for _, story in ipairs(all) do
+                story.classZones[zone.classFile] = areaID
+            end
+            for _, list in ipairs({ zone.side, zone.alsoSide or {} }) do
+                for _, step in ipairs(list) do
+                    local questID = stepIDs(step)[1]
+                    sideClassZones[questID] = sideClassZones[questID] or {}
+                    sideClassZones[questID][zone.classFile] = areaID
+                end
+            end
         end
         table.sort(all, function(a, b)
             local la, lb = firstLevel(a.steps[1]), firstLevel(b.steps[1])
@@ -143,7 +200,12 @@ function ns:GetZoneName(areaID)
     end
     if zone.localName == nil then
         zone.localName = false
-        if zone.classFile then
+        if zone.skill then
+            -- Profession entries: the profession name in the client's language, when the client has it.
+            local name = C_TradeSkillUI and C_TradeSkillUI.GetTradeSkillDisplayName
+                and C_TradeSkillUI.GetTradeSkillDisplayName(zone.skill)
+            zone.localName = (name and name ~= "") and name or false
+        elseif zone.classFile then
             -- Class entries in the "Class Quests" group: the class name in the client's language.
             local names = (UnitSex and UnitSex("player") == 3 and LOCALIZED_CLASS_NAMES_FEMALE)
                 or LOCALIZED_CLASS_NAMES_MALE
@@ -189,8 +251,21 @@ function ns:UpdatePlayerInfo()
     playerClassBit = classID and 2 ^ (classID - 1) or nil
     playerClassFile = classFile
     -- Storylines shared by both factions are named after the quests this faction sees.
+    -- Quests shared by several classes belong to this character's class entry, not to the class
+    -- they happen to be filed under.
+    local function home(filed, classZones)
+        local zone = self.Zones[filed]
+        if zone.classFile and zone.classFile ~= playerClassFile and classZones then
+            return classZones[playerClassFile] or filed
+        end
+        return filed
+    end
     for _, story in pairs(self.storyByKey) do
         story.name = (playerFaction == 2) and story.nameHorde or story.nameAlliance
+        story.zone = home(story.homeZone, story.classZones)
+    end
+    for questID, filed in pairs(sideHomeZone) do
+        self.sideZoneByQuest[questID] = home(filed, sideClassZones[questID])
     end
     self:InvalidateProgress()
 end
@@ -214,6 +289,10 @@ function ns:IsQuestForPlayer(questID)
     -- Class quests (q[5] = class bitmask) only for those classes.
     local classes = q[5]
     if classes and playerClassBit and math.floor(classes / playerClassBit) % 2 == 0 then
+        return false
+    end
+    -- Profession quests (q[6] = skill line) only for that profession, unless all are shown.
+    if q[6] and not self:IsProfessionShown(q[6]) then
         return false
     end
     local races = q[4]
@@ -336,7 +415,69 @@ function ns:IsZoneForPlayer(zone)
     if not playerFaction then
         self:UpdatePlayerInfo()
     end
+    if zone.skill then
+        return self:IsProfessionShown(zone.skill)
+    end
     return not zone.classFile or zone.classFile == playerClassFile
+end
+
+---------------------------------------------------------------------------
+-- Professions
+---------------------------------------------------------------------------
+
+local professionRanks = {}     -- skill line ID -> skill rank, for the professions this character has
+local professionsKnown = false -- false when the client can't tell (then every profession is shown)
+
+--- Reads the character's professions and their skill ranks.
+function ns:UpdateProfessions()
+    wipe(professionRanks)
+    professionsKnown = false
+    if GetProfessions and GetProfessionInfo then
+        professionsKnown = true
+        local indices = { GetProfessions() }
+        for i = 1, 6 do
+            if indices[i] then
+                local _, _, rank, _, _, _, skillLine = GetProfessionInfo(indices[i])
+                if skillLine then
+                    professionRanks[skillLine] = rank or 0
+                end
+            end
+        end
+    elseif GetNumSkillLines and GetSkillLineInfo then
+        -- Classic: skill lines by name (English, or the client's language via the zone names).
+        local byName = {}
+        for _, zone in pairs(self.Zones) do
+            if zone.skill then
+                byName[zone.name:lower()] = zone.skill
+                byName[self:GetZoneName(zone.id):lower()] = zone.skill
+            end
+        end
+        professionsKnown = true
+        for i = 1, GetNumSkillLines() do
+            local name, isHeader, _, rank = GetSkillLineInfo(i)
+            local skill = name and not isHeader and byName[name:lower()]
+            if skill then
+                professionRanks[skill] = rank or 0
+            end
+        end
+    end
+    self:InvalidateProgress()
+end
+
+--- Skill rank in a profession: a number, or false if not learned, or nil if the client can't tell.
+function ns:GetProfessionRank(skill)
+    if not professionsKnown then
+        return nil
+    end
+    return professionRanks[skill] or false
+end
+
+function ns:GetProfessionName(skill)
+    return self:GetZoneName(300000 + skill)
+end
+
+function ns:IsProfessionShown(skill)
+    return self.db.showAllProfessions or self:GetProfessionRank(skill) ~= false
 end
 
 --- Stories of a zone that apply to the current character (faction, race, class), in display order.
@@ -485,22 +626,23 @@ function ns:OnQuestTurnedIn(questID)
     completedCache[questID] = true
     self:InvalidateProgress()
     local stories = self.storiesByQuest[questID]
-    if not stories or not self.db.announce or not self:IsQuestForPlayer(questID) then
+    if not stories or not self:IsQuestForPlayer(questID) then
         return
     end
     for _, story in ipairs(stories) do
         if not self:IsStoryIgnored(story) then
             local done, total = self:GetStoryProgress(story)
-            if total > 0 and done == total then
+            local complete = total > 0 and done == total
+            if complete and self.db.completeSound and PlaySound and SOUNDKIT and SOUNDKIT.IG_QUEST_LIST_COMPLETE then
+                PlaySound(SOUNDKIT.IG_QUEST_LIST_COMPLETE)
+            end
+            if self.db.announce and complete then
                 self:Print(("Storyline complete: %s (%s)"):format(storyLink(story), self:GetZoneName(story.zone)))
-                if PlaySound and SOUNDKIT and SOUNDKIT.IG_QUEST_LIST_COMPLETE then
-                    PlaySound(SOUNDKIT.IG_QUEST_LIST_COMPLETE)
-                end
                 local zoneDone, zoneTotal = self:GetZoneProgress(story.zone)
                 if zoneTotal > 0 and zoneDone == zoneTotal then
                     self:Print(("All %d storylines of %s are complete!"):format(zoneTotal, self:GetZoneName(story.zone)))
                 end
-            elseif total > 0 then
+            elseif self.db.announce and total > 0 then
                 self:Print(("Storyline progress: %s %d/%d"):format(storyLink(story), done, total))
             end
         end
@@ -524,6 +666,7 @@ events:RegisterEvent("PLAYER_LEVEL_UP") -- difficulty colors and XP depend on th
 events:RegisterEvent("GOSSIP_SHOW")       -- talking to a quest giver: warn about reputation-locked quests
 events:RegisterEvent("QUEST_GREETING")
 events:RegisterEvent("UPDATE_FACTION")    -- reputation changes can unlock quests
+events:RegisterEvent("SKILL_LINES_CHANGED") -- learning or leveling a profession
 
 local refreshPending = false
 local function requestRefresh()
@@ -542,18 +685,26 @@ events:SetScript("OnEvent", function(_, event, arg1)
     if event == "ADDON_LOADED" then
         if arg1 == ADDON_NAME then
             StorylinesDB = StorylinesDB or {}
+            -- Reputation warnings used to be on/off.
+            if type(StorylinesDB.repWarnings) == "boolean" then
+                StorylinesDB.repWarnings = StorylinesDB.repWarnings and "both" or "off"
+            end
             applyDefaults(StorylinesDB, defaults)
             ns.db = StorylinesDB
             ns:BuildIndex()
         end
     elseif event == "PLAYER_LOGIN" then
         ns:UpdatePlayerInfo()
+        ns:UpdateProfessions()
         if ns.InitMinimapButton then
             ns:InitMinimapButton()
         end
     elseif event == "QUEST_TURNED_IN" then
         ns:OnQuestTurnedIn(arg1)
         ns:CheckFollowUpReputation(arg1)
+        requestRefresh()
+    elseif event == "SKILL_LINES_CHANGED" then
+        ns:UpdateProfessions()
         requestRefresh()
     elseif event == "GOSSIP_SHOW" or event == "QUEST_GREETING" then
         ns:CheckQuestGiverReputation()
@@ -601,20 +752,20 @@ local function slashHandler(msg)
         ns.db.announce = not ns.db.announce
         ns:Print("Chat announcements " .. (ns.db.announce and "enabled." or "disabled."))
     elseif cmd == "repwarn" then
-        ns.db.repWarnings = not ns.db.repWarnings
-        ns:Print("Reputation warnings " .. (ns.db.repWarnings and "enabled." or "disabled."))
+        ns.db.repWarnings = (ns.db.repWarnings == "off") and "both" or "off"
+        ns:Print("Reputation warnings " .. (ns.db.repWarnings ~= "off" and "enabled." or "disabled."))
     elseif cmd == "reset" then
-        wipe(ns.db.ignoredQuests)
-        wipe(ns.db.ignoredStories)
-        ns:InvalidateProgress()
+        ns:ClearIgnored()
         ns:Print("All ignored quests and storylines were restored.")
-        requestRefresh()
+    elseif cmd == "options" or cmd == "config" or cmd == "settings" then
+        ns:OpenOptions()
     elseif cmd == "zone" or cmd == "z" then
         showZone(rest)
     elseif cmd == "help" then
         ns:Print("Commands:")
         ns:Print("/storylines - toggle the window")
         ns:Print("/storylines zone <name> - show a zone (e.g. /stl zone westfall, or just /stl westf)")
+        ns:Print("/storylines options - open the settings")
         ns:Print("/storylines minimap - show/hide the minimap button")
         ns:Print("/storylines announce - toggle chat messages when you finish a storyline step")
         ns:Print("/storylines repwarn - toggle warnings when your reputation is too low for a quest")

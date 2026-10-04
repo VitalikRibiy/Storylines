@@ -70,6 +70,15 @@ CLASS_AREAS = {CLASS_AREA_BASE + mask: name for name, mask in CLASS_MASKS.items(
 def class_bits(mask):
     return [bit for bit in CLASS_MASKS.values() if mask & bit]
 
+
+# Profession quests are filed under one entry per profession in the "Professions" group, keyed
+# PROFESSION_AREA_BASE + skill line ID. The addon shows the professions the character has learned.
+PROFESSIONS = {171: "Alchemy", 164: "Blacksmithing", 185: "Cooking", 333: "Enchanting", 202: "Engineering",
+               129: "First Aid", 356: "Fishing", 182: "Herbalism", 165: "Leatherworking", 186: "Mining",
+               393: "Skinning", 197: "Tailoring"}
+PROFESSION_AREA_BASE = 300000
+PROFESSION_AREAS = {PROFESSION_AREA_BASE + skill: name for skill, name in PROFESSIONS.items()}
+
 # Reputation names used to tell same-named storylines apart (e.g. the two "Khan Hratha" chains).
 FACTION_NAMES = {
     21: "Booty Bay", 47: "Ironforge", 54: "Gnomeregan Exiles", 59: "Thorium Brotherhood", 68: "Undercity",
@@ -81,7 +90,7 @@ FACTION_NAMES = {
 }
 
 # Zone list groups shown in the addon.
-EASTERN_KINGDOMS, KALIMDOR, DUNGEONS, BATTLEGROUNDS, CLASS_QUESTS = 1, 2, 3, 4, 5
+EASTERN_KINGDOMS, KALIMDOR, DUNGEONS, BATTLEGROUNDS, CLASS_QUESTS, PROFESSION_QUESTS = 1, 2, 3, 4, 5, 6
 KALIMDOR_AREAS = {14, 15, 16, 17, 141, 148, 215, 331, 357, 361, 400, 405, 406, 440, 490, 493, 618, 1377,
                   1637, 1638, 1657}
 BATTLEGROUND_AREAS = {2597, 3277, 3358}
@@ -375,20 +384,25 @@ def build(offline, questiedb=None):
         if qid in overrides.ZONE_OVERRIDES:
             zone = overrides.ZONE_OVERRIDES[qid]
         reason = None
+        skill = q.get(SKILL) if isinstance(q.get(SKILL), dict) else {}
+        skill_id = skill.get(1)
         if not name or JUNK_NAME.search(name):
             reason = "placeholder"
         elif qid in blacklist:
             reason = "blacklisted"
         elif (q.get(SPECIAL) or 0) & 1:  # repeatable (2 = escort/exploration, still a story quest)
             reason = "repeatable"
-        elif q.get(SKILL):
-            reason = "profession quest"
+        elif skill_id and skill_id not in PROFESSIONS:
+            reason = "other skill quest"
         else:
             classes = (q.get(CLASSES) or inferred_classes(qid, q) or ALL_CLASSES) & ALL_CLASSES
             classes = classes if classes != ALL_CLASSES and class_bits(classes) else 0
             if classes:
                 # Class quests live under their class (shown only to that class), wherever they happen.
                 resolved = CLASS_AREA_BASE + class_bits(classes)[0]
+            elif skill_id:
+                # Profession quests live under their profession, wherever they happen.
+                resolved = PROFESSION_AREA_BASE + skill_id
             elif zone <= 0:
                 resolved, reason = None, "no zone (sort %d)" % zone
             else:
@@ -406,6 +420,7 @@ def build(offline, questiedb=None):
                         frozenset(friendly), 0)
                 kept[qid] = {"name": name, "level": q.get(LEVEL) or 0, "zone": resolved,
                              "races": races, "classes": classes, "raw": q,
+                             "skill": (skill_id, skill.get(2) or 0) if skill_id and not classes else None,
                              "dungeons": objective_dungeons(q)}
         if reason:
             skipped[reason.split(" (")[0]] += 1
@@ -527,7 +542,8 @@ def build(offline, questiedb=None):
     for members in groups.values():
         # A storyline belongs under a class only if all of it is class quests; a zone chain with a
         # class step (e.g. the warlock "Vile Familiars" leading into Durotar's chain) stays in the zone.
-        voters = [q for q in members if not kept[q]["classes"]] or members
+        # The same goes for profession quests.
+        voters = [q for q in members if not kept[q]["classes"] and not kept[q]["skill"]] or members
         zone_votes = Counter(kept[q]["zone"] for q in voters)
         top = max(zone_votes.values())
         # Prefer an open-world zone over a dungeon when tied (chains usually start outside).
@@ -672,6 +688,8 @@ def write_lua(kept, zones, dungeons, area_names, area_to_map, stats, source):
     def zone_name(area):
         if area in CLASS_AREAS:
             return CLASS_AREAS[area]
+        if area in PROFESSION_AREAS:
+            return PROFESSION_AREAS[area]
         if area in dungeons:
             return dungeons[area]["name"]
         return overrides.ZONE_NAMES.get(area) or area_names.get(area) or ("Zone %d" % area)
@@ -688,21 +706,27 @@ def write_lua(kept, zones, dungeons, area_names, area_to_map, stats, source):
         "",
         "-- [questID] = { name, questLevel, faction (0 both / 1 Alliance / 2 Horde), {raceIDs} or nil,",
         "--               class bitmask (class quests only: 1 Warrior, 2 Paladin, 4 Hunter, 8 Rogue, 16 Priest,",
-        "--               64 Shaman, 128 Mage, 256 Warlock, 1024 Druid) }",
+        "--               64 Shaman, 128 Mage, 256 Warlock, 1024 Druid),",
+        "--               required profession skill line ID, required skill level (profession quests only) }",
         "ns.Quests = {",
     ]
     for qid in sorted(used):
         k = kept[qid]
         races = race_list(k["races"])
-        extra = (",{" + ",".join(map(str, races)) + "}") if races else ""
-        if k.get("classes"):
-            extra = (extra or ",nil") + ",%d" % k["classes"]
+        fields = [("{" + ",".join(map(str, races)) + "}") if races else "nil",
+                  str(k["classes"]) if k.get("classes") else "nil"]
+        if k.get("skill"):
+            fields += [str(k["skill"][0]), str(k["skill"][1])]
+        while fields and fields[-1] == "nil":
+            fields.pop()
+        extra = "".join("," + f for f in fields)
         lines.append("[%d]={%s,%d,%d%s}," % (qid, lua_str(k["name"]), k["level"], faction_of(k["races"]), extra))
     lines += [
         "}",
         "",
         "-- [areaID] = { name, uiMapID, group (1 Eastern Kingdoms / 2 Kalimdor / 3 Dungeons & Raids / 4 Battlegrounds /",
-        "--              5 Class Quests: one entry per class, keyed 100000 + class bit, with classFile),",
+        "--              5 Class Quests: one entry per class, keyed 100000 + class bit, with classFile /",
+        "--              6 Professions: one entry per profession, keyed 300000 + skill line ID, with skill),",
         "--              parent areaID (dungeons), stories = { {name, {steps}, name for Horde if different} },",
         "--              side = {steps},",
         "--              also = {story keys of storylines filed elsewhere that start here}, alsoSide = {steps} }",
@@ -712,12 +736,15 @@ def write_lua(kept, zones, dungeons, area_names, area_to_map, stats, source):
     for area in sorted(zones, key=zone_name):
         z = zones[area]
         is_dungeon = area in dungeons
-        ui_map = 0 if is_dungeon or area in CLASS_AREAS else area_to_map.get(area, 0)
+        ui_map = 0 if is_dungeon or area in CLASS_AREAS or area in PROFESSION_AREAS else area_to_map.get(area, 0)
         parent = dungeons[area]["parent"] if is_dungeon else 0
         class_file = ""
         if area in CLASS_AREAS:
             group = CLASS_QUESTS
             class_file = ',classFile="%s"' % CLASS_AREAS[area].upper()
+        elif area in PROFESSION_AREAS:
+            group = PROFESSION_QUESTS
+            class_file = ",skill=%d" % (area - PROFESSION_AREA_BASE)
         elif area in BATTLEGROUND_AREAS:
             group = BATTLEGROUNDS
         elif is_dungeon:

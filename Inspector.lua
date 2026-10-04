@@ -29,6 +29,9 @@ function ns:GetQuestStatusText(questID, state, brief)
         return "|cffffd100Available - you can pick it up now|r"
     elseif availability == "level" then
         return "|cffff4040Available at level " .. detail .. "|r"
+    elseif availability == "skill" then
+        return ("|cffff4040Needs %s %d (you have %d)|r"):format(self:GetProfessionName(detail.skill), detail.level,
+            detail.rank)
     elseif availability == "reputation" then
         if brief then
             return "|cffff4040Reputation too low - see above|r"
@@ -62,7 +65,7 @@ local function AddText(text, font, color, indent, gap)
     end
     indent = indent or 0
     local fontName = font or "GameFontHighlight"
-    fs:SetFontObject(_G[fontName] or fontName)
+    fs:SetFontObject(ns:Font(fontName))
     fs:ClearAllPoints()
     fs:SetPoint("TOPLEFT", indent, cursor)
     fs:SetWidth(contentWidth() - indent)
@@ -89,14 +92,14 @@ local function AddLine(opts)
     local line = linePool[lineUsed]
     if not line then
         line = CreateFrame("Button", nil, content)
-        line:SetHeight(LINE_HEIGHT)
         line:RegisterForClicks("LeftButtonUp")
         line:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
         line.icon = line:CreateTexture(nil, "ARTWORK")
         line.icon:SetSize(14, 14)
-        line.right = line:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+        line.right = line:CreateFontString(nil, "ARTWORK")
+        line.right:SetFontObject(ns:Font("GameFontHighlightSmall"))
         line.right:SetPoint("RIGHT", -2, 0)
-        line.text = line:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+        line.text = line:CreateFontString(nil, "ARTWORK")
         line.text:SetPoint("LEFT", line.icon, "RIGHT", 4, 0)
         line.text:SetPoint("RIGHT", line.right, "LEFT", -4, 0)
         line.text:SetJustifyH("LEFT")
@@ -105,6 +108,8 @@ local function AddLine(opts)
         linePool[lineUsed] = line
     end
     local indent = opts.indent or 0
+    local height = math.floor(LINE_HEIGHT * ns:TextScale() + 0.5)
+    line:SetHeight(height)
     line:ClearAllPoints()
     line:SetPoint("TOPLEFT", indent, cursor)
     line:SetWidth(contentWidth() - indent)
@@ -117,7 +122,7 @@ local function AddLine(opts)
         line.icon:SetTexture(opts.icon)
     end
     line.icon:SetDesaturated(opts.desaturate or false)
-    line.text:SetFontObject(opts.font and _G[opts.font] or GameFontHighlightSmall)
+    line.text:SetFontObject(ns:Font(opts.font or "GameFontHighlightSmall"))
     line.text:SetText(opts.text or "")
     local c = opts.color or { 1, 1, 1 }
     line.text:SetTextColor(c[1], c[2], c[3])
@@ -126,7 +131,7 @@ local function AddLine(opts)
     line:SetScript("OnEnter", opts.onEnter)
     line:EnableMouse(opts.onClick ~= nil or opts.onEnter ~= nil)
     line:Show()
-    cursor = cursor - LINE_HEIGHT - 1
+    cursor = cursor - height - 1
     return line
 end
 
@@ -152,7 +157,8 @@ local function AddWarning(title, body)
         w.title:SetPoint("TOPLEFT", 36, -9)
         w.title:SetJustifyH("LEFT")
         w.title:SetTextColor(1, 0.4, 0.4)
-        w.text = w:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+        w.text = w:CreateFontString(nil, "ARTWORK")
+        w.text:SetFontObject(ns:Font("GameFontHighlightSmall"))
         w.text:SetJustifyH("LEFT")
         w.text:SetJustifyV("TOP")
         w.text:SetWordWrap(true)
@@ -216,7 +222,8 @@ function ns:FormatQuestLine(questID, prefix, state)
     end
     local tag = self:GetQuestTag(questID)
     local tagText = tag and (" " .. self:GetTagMarkup(tag, 13)) or ""
-    return (prefix or "") .. levelText .. self:GetQuestName(questID) .. tagText
+    local idText = self.db.showQuestIDs and (" |cff808080#" .. questID .. "|r") or ""
+    return (prefix or "") .. levelText .. self:GetQuestName(questID) .. tagText .. idText
 end
 
 local function questTooltip(questID)
@@ -425,6 +432,16 @@ local function RenderQuest(questID, story)
     end
     if levelLine ~= "" then
         AddText(levelLine, "GameFontHighlight", nil, 0, 2)
+    end
+    -- Profession requirement (profession quests).
+    local quest = ns.Quests[questID]
+    if quest and quest[6] then
+        local rank = ns:GetProfessionRank(quest[6])
+        local need = quest[7] or 0
+        local have = (rank == nil and "") or (rank == false and " |cffff4040(not learned)|r")
+            or (rank < need and (" |cffff4040(you have " .. rank .. ")|r")) or " |cff40ff40(ok)|r"
+        AddText(("Profession: %s%s%s"):format(ns:GetProfessionName(quest[6]), need > 0 and (" " .. need) or "", have),
+            "GameFontHighlight", nil, 0, 2)
     end
     -- Reputation requirement, shown whether or not it is met.
     for _, rep in ipairs({ details.minRep or false, details.maxRep or false }) do
@@ -707,10 +724,13 @@ function ns:RefreshInspector(keepScroll)
         return
     end
     panel = panel or CreatePanel()
-    -- Dock on the side of the main window that has room.
+    -- Dock on the side chosen in the options, or on the side of the main window that has room.
     local main = StorylinesFrame
+    local side = self.db.detailsSide
     panel:ClearAllPoints()
-    if (main:GetRight() or 0) + WIDTH > (UIParent:GetRight() or math.huge) then
+    panel:SetBackdropColor(1, 1, 1, self.db.bgAlpha or 1)
+    if side == "left" or (side ~= "right"
+        and (main:GetRight() or 0) + WIDTH * main:GetScale() > (UIParent:GetRight() or math.huge)) then
         panel:SetPoint("TOPRIGHT", main, "TOPLEFT", 6, 0)
         panel:SetPoint("BOTTOMRIGHT", main, "BOTTOMLEFT", 6, 0)
     else

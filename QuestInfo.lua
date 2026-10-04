@@ -235,7 +235,8 @@ end
 
 --- Whether this character can pick the quest up now, from the quest's real requirements.
 -- @return "available", "locked" (earlier quests needed), "reputation" (also returns the problem table, see
---   GetReputationProblem) or "level" (also returns the required level)
+--   GetReputationProblem), "level" (also returns the required level) or "skill" (profession skill too low;
+--   also returns { skill, level, rank })
 function ns:GetQuestAvailability(questID)
     local d = self.QuestDetails and self.QuestDetails[questID]
     if not d then
@@ -266,6 +267,13 @@ function ns:GetQuestAvailability(questID)
     local required = d[1] or 0
     if required > (UnitLevel("player") or 1) then
         return "level", required
+    end
+    local q = self.Quests[questID]
+    if q and q[6] and (q[7] or 0) > 0 then
+        local rank = self:GetProfessionRank(q[6])
+        if rank ~= nil and (rank or 0) < q[7] then
+            return "skill", { skill = q[6], level = q[7], rank = rank or 0 }
+        end
     end
     return "available"
 end
@@ -521,7 +529,7 @@ function ns:CanSetWaypoint(areaID, x, y)
     if not (area and area[2] > 0 and x and y) then
         return false
     end
-    if TomTom and TomTom.AddWaypoint then
+    if TomTom and TomTom.AddWaypoint and self.db.waypoints ~= "map" then
         return true
     end
     return C_Map and C_Map.SetUserWaypoint and UiMapPoint and UiMapPoint.CreateFromCoordinates and true or false
@@ -535,7 +543,7 @@ function ns:SetWaypoint(areaID, x, y, title)
         return
     end
     local where = self:FormatLocation(areaID, x, y)
-    if TomTom and TomTom.AddWaypoint then
+    if TomTom and TomTom.AddWaypoint and self.db.waypoints ~= "map" then
         TomTom:AddWaypoint(uiMap, x / 100, y / 100, { title = title, from = "Storylines" })
     else
         if C_Map.CanSetUserWaypointOnMap and not C_Map.CanSetUserWaypointOnMap(uiMap) then
@@ -575,13 +583,16 @@ end
 --- Tells the player (chat + red on-screen text) that a quest is out of reach because of reputation.
 -- The chat line is before .. [quest] .. after .. ": <requirement>."
 function ns:WarnReputation(questID, problem, before, after)
-    if warned[questID] or not self.db.repWarnings then
+    local mode = self.db.repWarnings
+    if warned[questID] or mode == "off" then
         return
     end
     warned[questID] = true
     local quest = "|cffffd100[" .. self:GetQuestName(questID) .. "]|r"
-    self:Print(before .. quest .. after .. ": " .. self:DescribeReputationProblem(problem) .. ".")
-    if UIErrorsFrame and UIErrorsFrame.AddMessage then
+    if mode ~= "screen" then
+        self:Print(before .. quest .. after .. ": " .. self:DescribeReputationProblem(problem) .. ".")
+    end
+    if mode ~= "chat" and UIErrorsFrame and UIErrorsFrame.AddMessage then
         UIErrorsFrame:AddMessage(("Reputation too low for %s"):format(self:GetQuestName(questID)), 1, 0.1, 0.1, 1)
     end
 end
