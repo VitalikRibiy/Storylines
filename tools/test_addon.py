@@ -107,7 +107,10 @@ function UnitRace() return "Race", "Race", __race end
 __level = 20
 function UnitLevel() return __level end
 function UnitName() return "Tester" end
-function UnitClass() return "Warrior" end
+__class = 1 -- Warrior
+local classFiles = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "DEATHKNIGHT", "SHAMAN", "MAGE", "WARLOCK", "MONK", "DRUID" }
+function UnitClass() return "Class", classFiles[__class], __class end
+LOCALIZED_CLASS_NAMES_MALE = { PALADIN = "Paladin", ROGUE = "Rogue", WARRIOR = "Warrior" }
 function UnitSex() return 2 end
 __waypoint = nil
 UiMapPoint = { CreateFromCoordinates = function(map, x, y) return { map = map, x = x, y = y } end }
@@ -244,13 +247,22 @@ def main():
     check(durotar > 0, "Horde sees Durotar storylines (%d)" % durotar)
     lua_do("__faction = 'Alliance'; __race = 1")
     lua_do("local ns = ... ns:UpdatePlayerInfo()")
-    check(lua_do("local ns = ... local d, t = ns:GetZoneProgress(14) return t") == 0, "Alliance sees no Durotar storylines")
+    horde_only = lua_do("""local ns = ...
+        local n = 0
+        for _, s in ipairs(ns:GetZoneStories(14)) do
+            for _, step in ipairs(s.steps) do
+                local id = ns:ResolveStep(step)
+                if id and ns.Quests[id][3] == 2 then n = n + 1 end
+            end
+        end
+        return n""")
+    check(horde_only == 0, "Alliance sees no Horde-only quests in Durotar (only neutral ones)")
 
     print("Race filtering:")
     # Find a quest restricted to some Alliance races.
     lua_do("""local ns = ...
         for id, q in pairs(ns.Quests) do
-            if q[4] and q[3] == 1 then __raceQuest = id; __raceList = q[4]; break end
+            if q[4] and q[3] == 1 and not q[5] then __raceQuest = id; __raceList = q[4]; break end
         end""")
     rq = lua.eval("__raceQuest")
     if rq:
@@ -372,7 +384,7 @@ def main():
     print("   " + quest_text.replace("\n", "\n   "))
     for needle, label in (("Kill Edwin VanCleef", "objectives"), ("Requires level 14", "required level"),
                           ("Dungeon quest", "quest type"), ("Westfall (56.3, 47.5)", "giver location"),
-                          ("+500|r Stormwind", "reputation reward"), ("Tunic of Westfall", "reward items"),
+                          ("+200|r Stormwind", "reputation reward"), ("Tunic of Westfall", "reward items"),
                           ("2,600 XP", "experience"), ("Quest 8 of 8", "position in storyline")):
         check(needle in quest_text, "quest details show " + label)
     # Click the giver location to set a waypoint.
@@ -464,28 +476,32 @@ def main():
     check("Not available yet" in status, "locked quests explain why in their status")
 
     print("Reputation:")
+    # Alliance Alterac Valley: 7168 "Rise and Be Recognized" needs 7162 done and Friendly (3000) with
+    # the Stormpike Guard (730); it is given by Lieutenant Haggerdin (13841).
     lua_do("""local ns = ...
-        __faction, __race, __level = 'Alliance', 1, 25
+        __faction, __race, __level = 'Alliance', 1, 60
         ns:UpdatePlayerInfo()
-        __rep[47] = 4200 -- Ironforge: Friendly +1,200""")
-    check(lua_do("local ns = ... return (ns:GetQuestAvailability(484))") == "reputation",
-          "Young Crocolisk Skins (484, needs Honored with Ironforge) is blocked at Friendly")
-    status = lua_do("local ns = ... return ns:GetQuestStatusText(484, ns.STATE_TODO)")
-    check("Requires Honored with Ironforge (you are Friendly +1,200)" in status, "status explains it (%s)" % status)
-    lua_do("""local ns = ... __npcGUID = 'Creature-0-1-0-1-2094-0000AAAA'
+        __completed[7162] = true
+        __rep[730] = 1200 -- Neutral +1,200
+        ns.__fire('QUEST_LOG_UPDATE')""")
+    check(lua_do("local ns = ... return (ns:GetQuestAvailability(7168))") == "reputation",
+          "Rise and Be Recognized (7168, needs Friendly with Stormpike Guard) is blocked at Neutral")
+    status = lua_do("local ns = ... return ns:GetQuestStatusText(7168, ns.STATE_TODO)")
+    check("Requires Friendly with Stormpike Guard (you are Neutral +1,200)" in status, "status explains it (%s)" % status)
+    lua_do("""local ns = ... __npcGUID = 'Creature-0-1-0-1-13841-0000AAAA'
         ns.__fire('GOSSIP_SHOW')""")
     chat = lua.eval("table.concat(__printed, '\\n')")
-    expected = ("James Halloran has |cffffd100[Young Crocolisk Skins]|r for you, but your reputation is not high "
-                "enough: Requires Honored with Ironforge (you are Friendly +1,200).")
+    expected = ("has |cffffd100[Rise and Be Recognized]|r for you, but your reputation is not high "
+                "enough: Requires Friendly with Stormpike Guard (you are Neutral +1,200).")
     check(expected in chat, "talking to the quest giver warns in chat")
-    check(lua.eval("__errors[#__errors]") == "Reputation too low for Young Crocolisk Skins",
+    check(lua.eval("__errors[#__errors]") == "Reputation too low for Rise and Be Recognized",
           "and shows red on-screen text")
     count = lua.eval("#__printed")
     lua_do("local ns = ... ns.__fire('GOSSIP_SHOW')")
     check(lua.eval("#__printed") == count, "the warning is not repeated for the same quest")
-    lua_do("local ns = ... __rep[47] = 9000 ns.__fire('UPDATE_FACTION')")
-    check(lua_do("local ns = ... return ns:GetQuestAvailability(484)") == "available", "reaching Honored unlocks it")
-    lua_do("local ns = ... __secret = true __npcGUID = 'Creature-0-1-0-1-2094-0000AAAA' ns.__fire('QUEST_GREETING') __secret = false")
+    lua_do("local ns = ... __rep[730] = 3000 ns.__fire('UPDATE_FACTION')")
+    check(lua_do("local ns = ... return (ns:GetQuestAvailability(7168))") == "available", "reaching Friendly unlocks it")
+    lua_do("local ns = ... __secret = true __npcGUID = 'Creature-0-1-0-1-13841-0000AAAA' ns.__fire('QUEST_GREETING') __secret = false")
     check(True, "a hidden (secret) NPC identity is ignored without errors")
     # Follow-up warning after a turn-in (Horde, Alterac Valley: 7161 -> 7163 needs Friendly with Frostwolf Clan).
     lua_do("""local ns = ...
@@ -497,19 +513,19 @@ def main():
     chat = lua.eval("table.concat(__printed, '\\n')")
     check("Your reputation is not high enough for the next quest, |cffffd100[Rise and Be Recognized]|r: Requires "
           "Friendly with Frostwolf Clan (you are Neutral +500)." in chat, "turning in a quest warns about the follow-up")
-    lua_do("local ns = ... ns.db.repWarnings = false __rep[47] = 0 __faction, __race = 'Alliance', 1 ns:UpdatePlayerInfo()")
+    lua_do("local ns = ... ns.db.repWarnings = false __faction, __race = 'Alliance', 1 ns:UpdatePlayerInfo()")
     count = lua.eval("#__printed")
-    lua_do("local ns = ... __npcGUID = 'Creature-0-1-0-1-1-0' ns.__fire('GOSSIP_SHOW')")
+    lua_do("local ns = ... __rep[730] = 0 __npcGUID = 'Creature-0-1-0-1-13841-0' ns.__fire('GOSSIP_SHOW')")
     check(lua.eval("#__printed") == count, "/stl repwarn turns the warnings off")
-    lua_do("local ns = ... ns.db.repWarnings = true __rep[47] = 4200")
-    lua_do("local ns = ... ns:ShowUI(11) ns:InspectQuest(484)")
+    lua_do("local ns = ... ns.db.repWarnings = true __rep[730] = 1200 ns.__fire('UPDATE_FACTION')")
+    lua_do("local ns = ... ns:ShowUI(2597) ns:InspectQuest(7168)")
     text = lua.eval("__visibleText(StorylinesInspector)")
-    check("Reputation: Honored with Ironforge |cffff4040(you are Friendly +1,200)|r" in text,
+    check("Reputation: Friendly with Stormpike Guard |cffff4040(you are Neutral +1,200)|r" in text,
           "the details panel shows the reputation requirement")
-    check("You can't get this quest yet" in text and "You need |cffffffff4,800|r more reputation with Ironforge." in text,
+    check("You can't get this quest yet" in text and "You need |cffffffff1,800|r more reputation with Stormpike Guard." in text,
           "the quest details show a warning box with how much reputation is missing")
     check("Reputation too low - see above" in text, "the status line points to the warning instead of repeating it")
-    lua_do("local ns = ... __rep[47] = 9000 ns.__fire('UPDATE_FACTION') ns:InspectQuest(484)")
+    lua_do("local ns = ... __rep[730] = 3000 ns.__fire('UPDATE_FACTION') ns:InspectQuest(7168)")
     text = lua.eval("__visibleText(StorylinesInspector)")
     check("You can't get this quest yet" not in text, "the warning disappears once the reputation is reached")
     # Storyline overview (Horde, Alterac Valley storyline containing 7163 which needs Friendly with Frostwolf Clan).
@@ -522,79 +538,104 @@ def main():
     check("Reputation too low for" in text and "Rise and Be Recognized|r: Requires Friendly with Frostwolf Clan" in text,
           "the storyline overview warns about quests your reputation is too low for")
     lua_do("local ns = ... __faction, __race = 'Alliance', 1 ns:UpdatePlayerInfo() ns:CloseInspector()")
-    # Storyline rows in the main list get a warning icon (Wetlands: "Apprentice's Duties" contains 484).
-    lua_do("local ns = ... __rep[47] = 4200 ns.__fire('UPDATE_FACTION') ns.db.hideCompleted = false ns:ShowUI(11)")
-    row_text = lua_do("""local ns = ...
-        for _, row in ipairs(StorylinesFrame.storyList.rows) do
-            if row:IsShown() and row.item and row.item.type == 'story' and row.item.story.name == "Apprentice's Duties" then
-                return row.text:GetText()
-            end
-        end""")
+    # Storyline rows in the main list get a warning icon (Alliance Alterac Valley storyline containing 7168).
+    lua_do("local ns = ... __rep[730] = 1200 ns.__fire('UPDATE_FACTION') ns.db.hideCompleted = false ns:ShowUI(2597)")
+    def story_row_text():
+        return lua_do("""local ns = ...
+            for _, row in ipairs(StorylinesFrame.storyList.rows) do
+                if row:IsShown() and row.item and row.item.type == 'story' and row.item.story == ns.storiesByQuest[7168][1] then
+                    return row.text:GetText()
+                end
+            end""")
+    row_text = story_row_text()
     check(row_text and "UI-Dialog-Icon-AlertNew" in row_text,
           "the storyline row shows a reputation warning icon (%s)" % row_text)
-    others = lua_do("""local ns = ...
-        local n = 0
-        for _, row in ipairs(StorylinesFrame.storyList.rows) do
-            if row:IsShown() and row.item and row.item.type == 'story' and row.text:GetText():find('AlertNew') then n = n + 1 end
-        end
-        return n""")
-    check(others == 1, "only storylines with reputation-locked quests get the icon (%d)" % others)
     lua_do("""local ns = ...
         for _, row in ipairs(StorylinesFrame.storyList.rows) do
             if row:IsShown() and row.item and row.item.type == 'story' then row:GetScript('OnEnter')(row) end
         end""")
-    lua_do("local ns = ... __rep[47] = 9000 ns.__fire('UPDATE_FACTION') ns:RefreshUI()")
-    row_text = lua_do("""local ns = ...
-        for _, row in ipairs(StorylinesFrame.storyList.rows) do
-            if row:IsShown() and row.item and row.item.type == 'story' and row.item.story.name == "Apprentice's Duties" then
-                return row.text:GetText()
-            end
-        end""")
-    check("AlertNew" not in row_text, "the icon goes away once the reputation is reached")
+    lua_do("local ns = ... __rep[730] = 3000 ns.__fire('UPDATE_FACTION') ns:RefreshUI()")
+    check("AlertNew" in (story_row_text() or ""),
+          "at Friendly the icon stays: later quests in the storyline need Honored and more")
+    lua_do("local ns = ... __rep[730] = 42999 ns.__fire('UPDATE_FACTION') ns:RefreshUI()")
+    check("AlertNew" not in (story_row_text() or ""), "the icon goes away once every requirement is met")
+    lua_do("local ns = ... __level = 25")
 
-    print("Storyline grouping (player reports):")
-    isha = lua_do("""local ns = ...
-        local s = ns.storiesByQuest[873][1]
-        local ids = {}
-        for _, step in ipairs(s.steps) do ids[#ids + 1] = ns.StepIDs(step)[1] end
-        return table.concat(ids, ',')""")
-    check(isha.startswith("844,") and ",860" not in isha and ",861" not in isha,
-          "Isha Awak starts at Plainstrider Menace; the Sergra Darkthorn breadcrumb is not part of it (%s)" % isha)
-    check(lua_do("local ns = ... return ns.storiesByQuest[860][1] ~= ns.storiesByQuest[873][1]"),
-          "The Hunter's Way / Sergra Darkthorn is its own storyline")
-    lua_do("local ns = ... __faction, __race = 'Horde', 5 ns:UpdatePlayerInfo()")
-    uc = lua_do("""local ns = ...
+    print("Faction-specific names:")
+    names = lua_do("""local ns = ...
+        local s = ns.storiesByQuest[92514][1]
+        __faction, __race = 'Horde', 2 ns:UpdatePlayerInfo()
+        local h = s.name
+        __faction, __race = 'Alliance', 1 ns:UpdatePlayerInfo()
+        return h .. '|' .. s.name""")
+    check(names == "The Fate of Zephras|The Fate of Zephras", "Zephras Isle's main storyline is The Fate of Zephras (%s)" % names)
+    names = lua_do("""local ns = ...
+        local s = ns.storiesByQuest[1253] and ns.storiesByQuest[1253][1]
         local out = {}
-        for _, s in ipairs(ns:GetZoneStories(1497)) do
-            if s.zone ~= 1497 then out[#out + 1] = s.name .. '@' .. ns.Zones[s.zone].name end
-        end
-        for _, e in ipairs(ns:GetZoneSideQuests(1497)) do
-            if e.homeZone then out[#out + 1] = ns:GetQuestName(e.questID) .. '@' .. ns.Zones[e.homeZone].name end
-        end
-        return table.concat(out, '; ')""")
-    print("    Undercity also lists:", uc[:300], "...")
-    check("Hearts of Zeal@Razorfen Kraul" in uc, "Undercity lists the Hearts of Zeal storyline it starts")
-    check("The Book of Ur@Shadowfang Keep" in uc, "Undercity lists The Book of Ur (Shadowfang Keep quest picked up there)")
-    lua_do("local ns = ... ns:ShowUI(1497)")
-    rows = lua_do("""local ns = ...
-        local out = {}
-        for _, row in ipairs(StorylinesFrame.storyList.rows) do
-            if row:IsShown() and row.item and row.item.elsewhere then out[#out + 1] = row.text:GetText() end
-        end
-        return table.concat(out, ' | ')""")
-    check("(Razorfen Kraul)" in rows, "rows filed elsewhere show their zone (%s)" % rows[:120])
-    dupes = lua_do("""local ns = ...
-        local seen, dupes = {}, 0
-        for _, zone in pairs(ns.Zones) do
-            local local_seen = {}
-            for _, s in ipairs(zone.allStories) do
-                if local_seen[s] then dupes = dupes + 1 end
-                local_seen[s] = true
+        for _, f in ipairs({ {'Horde', 2}, {'Alliance', 1} }) do
+            __faction, __race = f[1], f[2] ns:UpdatePlayerInfo()
+            for _, st in ipairs(ns:GetZoneStories(1637)) do
+                if st.name:find('A Donation of Runecloth') then out[#out + 1] = f[1] .. ':' .. st.name end
             end
         end
-        return dupes""")
-    check(dupes == 0, "no storyline is listed twice in the same zone")
+        return table.concat(out, ' / ')""")
+    check("(Rashona Straglash)" in names or "(Vehena)" in names,
+          "duplicate storyline names for one faction get the quest giver added (%s)" % names)
     lua_do("local ns = ... __faction, __race = 'Alliance', 1 ns:UpdatePlayerInfo()")
+
+    print("Class quests:")
+    classes = lua_do("""local ns = ...
+        local function classZones()
+            local out = {}
+            for areaID, zone in pairs(ns.Zones) do
+                if zone.group == 5 then
+                    local d, t = ns:GetZoneProgress(areaID)
+                    if t > 0 then out[#out + 1] = ns:GetZoneName(areaID) end
+                end
+            end
+            table.sort(out)
+            return table.concat(out, ',')
+        end
+        __faction, __race, __class = 'Alliance', 1, 2 ns:UpdatePlayerInfo()   -- Human Paladin
+        local paladin = classZones()
+        local tome = ns:IsQuestForPlayer(1642)
+        __class = 4 ns:UpdatePlayerInfo()                                        -- Human Rogue
+        local rogue = classZones()
+        local tomeRogue = ns:IsQuestForPlayer(1642)
+        __class = 1 ns:UpdatePlayerInfo()
+        return paladin .. '|' .. rogue .. '|' .. tostring(tome) .. '|' .. tostring(tomeRogue)""")
+    paladin, rogue, tome, tome_rogue = classes.split("|")
+    check(paladin == "Paladin", "a paladin sees only the Paladin entry under Class Quests (%s)" % paladin)
+    check(rogue == "Rogue", "a rogue sees only the Rogue entry (%s)" % rogue)
+    check(tome == "true" and tome_rogue == "false", "paladin quests (The Tome of Divinity) are hidden from other classes")
+    leaked = lua_do("""local ns = ...
+        __faction, __race, __class = 'Alliance', 1, 2 ns:UpdatePlayerInfo()
+        local n = 0
+        for areaID in pairs(ns.Zones) do
+            for _, s in ipairs(ns:GetZoneStories(areaID)) do
+                for _, step in ipairs(s.steps) do
+                    local id = ns:ResolveStep(step)
+                    local mask = id and ns.Quests[id][5]
+                    if mask and math.floor(mask / 2) % 2 == 0 then n = n + 1 end
+                end
+            end
+            for _, e in ipairs(ns:GetZoneSideQuests(areaID)) do
+                local mask = ns.Quests[e.questID][5]
+                if mask and math.floor(mask / 2) % 2 == 0 then n = n + 1 end
+            end
+        end
+        __class = 1 ns:UpdatePlayerInfo()
+        return n""")
+    check(leaked == 0, "no other class's quest shows anywhere for a paladin (%d found)" % leaked)
+    sw = lua_do("""local ns = ...
+        __faction, __race, __class = 'Alliance', 1, 2 ns:UpdatePlayerInfo()
+        local found
+        for _, s in ipairs(ns:GetZoneStories(1519)) do
+            if s.zone ~= 1519 and ns.Zones[s.zone].group == 5 then found = s.name end
+        end
+        __class = 1 ns:UpdatePlayerInfo()
+        return found""")
+    check(sw is not None, "paladin storylines also show in Stormwind City, where they start (%s)" % sw)
 
     print("Data sanity:")
     bad = lua_do("""local ns = ...

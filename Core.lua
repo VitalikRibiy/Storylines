@@ -9,6 +9,7 @@ ns.GROUP_NAMES = {
     [2] = "Kalimdor",
     [3] = "Dungeons & Raids",
     [4] = "Battlegrounds",
+    [5] = "Class Quests",
 }
 
 local CHAT_PREFIX = "|cff33ff99Storylines:|r "
@@ -67,7 +68,9 @@ function ns:BuildIndex()
     for areaID, zone in pairs(self.Zones) do
         zone.id = areaID
         for i, raw in ipairs(zone.stories) do
-            local story = { name = raw[1], steps = raw[2], zone = areaID }
+            -- raw[3] is the name Horde players see when it differs (a storyline shared by both factions).
+            local story = { name = raw[1], nameAlliance = raw[1], nameHorde = raw[3] or raw[1],
+                            steps = raw[2], zone = areaID }
             local key
             for _, step in ipairs(story.steps) do
                 for _, questID in ipairs(stepIDs(step)) do
@@ -140,7 +143,12 @@ function ns:GetZoneName(areaID)
     end
     if zone.localName == nil then
         zone.localName = false
-        if zone.uiMap > 0 and C_Map and C_Map.GetMapInfo then
+        if zone.classFile then
+            -- Class entries in the "Class Quests" group: the class name in the client's language.
+            local names = (UnitSex and UnitSex("player") == 3 and LOCALIZED_CLASS_NAMES_FEMALE)
+                or LOCALIZED_CLASS_NAMES_MALE
+            zone.localName = names and names[zone.classFile] or false
+        elseif zone.uiMap > 0 and C_Map and C_Map.GetMapInfo then
             local info = C_Map.GetMapInfo(zone.uiMap)
             if info and info.name and info.name ~= "" then
                 zone.localName = info.name
@@ -169,7 +177,7 @@ end
 -- Player / quest state
 ---------------------------------------------------------------------------
 
-local playerFaction, playerRace
+local playerFaction, playerRace, playerClassBit, playerClassFile
 local completedCache = {}
 local progressCache = {} -- story -> { done, total, started }; cleared whenever quest state may change
 
@@ -177,6 +185,13 @@ function ns:UpdatePlayerInfo()
     local faction = UnitFactionGroup("player")
     playerFaction = (faction == "Alliance" and 1) or (faction == "Horde" and 2) or 0
     playerRace = select(3, UnitRace("player"))
+    local _, classFile, classID = UnitClass("player")
+    playerClassBit = classID and 2 ^ (classID - 1) or nil
+    playerClassFile = classFile
+    -- Storylines shared by both factions are named after the quests this faction sees.
+    for _, story in pairs(self.storyByKey) do
+        story.name = (playerFaction == 2) and story.nameHorde or story.nameAlliance
+    end
     self:InvalidateProgress()
 end
 
@@ -194,6 +209,11 @@ function ns:IsQuestForPlayer(questID)
         self:UpdatePlayerInfo()
     end
     if q[3] ~= 0 and playerFaction ~= 0 and q[3] ~= playerFaction then
+        return false
+    end
+    -- Class quests (q[5] = class bitmask) only for those classes.
+    local classes = q[5]
+    if classes and playerClassBit and math.floor(classes / playerClassBit) % 2 == 0 then
         return false
     end
     local races = q[4]
@@ -310,11 +330,20 @@ function ns:SetStoryIgnored(story, ignored)
     self:InvalidateProgress()
 end
 
---- Stories of a zone that apply to the current character (faction, race), in display order.
+--- Whether a zone entry is shown to this character: everything except other classes' entries
+-- in the "Class Quests" group.
+function ns:IsZoneForPlayer(zone)
+    if not playerFaction then
+        self:UpdatePlayerInfo()
+    end
+    return not zone.classFile or zone.classFile == playerClassFile
+end
+
+--- Stories of a zone that apply to the current character (faction, race, class), in display order.
 function ns:GetZoneStories(areaID, includeIgnored)
     local list = {}
     local zone = self.Zones[areaID]
-    if not zone then
+    if not zone or not self:IsZoneForPlayer(zone) then
         return list
     end
     for _, story in ipairs(zone.allStories) do
@@ -332,7 +361,7 @@ end
 function ns:GetZoneSideQuests(areaID)
     local list = {}
     local zone = self.Zones[areaID]
-    if not zone then
+    if not zone or not self:IsZoneForPlayer(zone) then
         return list
     end
     for _, step in ipairs(zone.allSide) do

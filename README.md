@@ -10,7 +10,7 @@ zone has, which ones you skipped completely, and which quest in a chain you need
 
 ## Features
 
-- **Zone list** grouped by Eastern Kingdoms, Kalimdor, Dungeons & Raids and Battlegrounds, with
+- **Zone list** grouped by Eastern Kingdoms, Kalimdor, Dungeons & Raids, Battlegrounds and Class Quests, with
   `completed / total` storylines per zone. An arrow marks the zone you're in.
 - **Storyline list** for the selected zone, with a progress bar, level range, `done/total` count
   and a check mark plus strike-through for finished storylines.
@@ -29,6 +29,9 @@ zone has, which ones you skipped completely, and which quest in a chain you need
   yellow, green and gray, relative to your character's level.
 - **Quest type icons** for Dungeon, Raid, Elite, PvP and Escort quests, on quests and on the
   storylines that contain them.
+- **Class Quests**: your own class's quest chains (paladin tomes, warlock summons, druid forms…)
+  under **Class Quests** in the zone list, and also in the zone or city where they start. You
+  never see another class's quests.
 - **Side quests**: quests that aren't part of any chain, listed separately with their own counter.
 - Only shows quests your **faction and race** can actually do.
 - **Reputation requirements**: quests that need a reputation you don't have are marked
@@ -77,43 +80,49 @@ and run `tools/package.sh` (writes `dist/Storylines-<version>.zip`).
 
 ## Where the storylines come from
 
-The game has no "storyline" data for classic zones, so the addon builds storylines from the
-quest database of [QuestieDB](https://github.com/Questie/QuestieDB), which has a dedicated WoW
-Forever data set. It also uses [Questie](https://github.com/Questie/Questie)'s list of
-unobtainable quests.
+The game has no "storyline" data for these zones, so the addon builds storylines from the
+WoW Forever quest database of [QuestieDB](https://github.com/Questie/QuestieDB). It uses the fully
+merged database, exactly as Questie uses it in game: the original data plus Questie's corrections
+and the quests, NPCs and changes that are new in WoW Forever (e.g. Zephras Isle and the new
+dungeons). QuestieDB's own export tool produces it. Questie's list of unobtainable quests is
+applied on top.
 
 `tools/generate_data.py` turns that database into `Data/Storylines.lua` (the storylines) and
-`Data/QuestDetails.lua` (objectives, quest givers with coordinates, quest types, XP and rewards
-for the inspector). Quest types come from Questie's tag list; any quest set in a dungeon, raid
-or battleground also gets that type.
+`Data/QuestDetails.lua` (objectives, quest givers with coordinates, quest types, XP, rewards and
+requirements for the inspector). Quest types come from Questie's tag list; any quest set in a
+dungeon, raid or battleground also gets that type.
 
-1. It keeps normal zone quests. It leaves out repeatable, class and profession quests,
-   placeholder quests and quests Questie marks as unobtainable.
+1. It keeps normal zone quests and class quests. It leaves out repeatable and profession quests,
+   placeholder quests and quests Questie marks as unobtainable. Class quests are filed under
+   their class (only that class sees them); a WoW Forever quest without a class in the data but
+   given only by one class's trainers counts as that class's quest.
 2. It links quests through their prerequisites, follow-up quests and child quests. Every
    connected group of two or more quests becomes one storyline. A quest that isn't linked to
    anything becomes a side quest.
 3. Mutually exclusive quests (e.g. "pick one of these") count as a single step.
 4. Alliance and Horde versions of the same chain stay separate storylines.
-5. "Next quest" links that the next quest doesn't actually require are optional **breadcrumbs**
-   (e.g. *Sergra Darkthorn* → *Plainstrider Menace*). They stay separate instead of being added
-   to the chain they lead to.
+5. **Breadcrumbs**, optional quests that send you to another quest without that quest requiring
+   them (e.g. *Sergra Darkthorn* → *Plainstrider Menace*), are listed as side quests. They are
+   never a step of a storyline, so skipping them doesn't leave a storyline unfinished. Only quests
+   that exclude each other ("pick one of these") are merged into one step.
 6. It files each storyline under the zone that has most of its quests and orders the steps by
    prerequisites, one branch at a time. If you pick up its first quest in a different zone or city
    (e.g. Shadowfang Keep quests from Undercity), it is listed there too, with the zone it belongs
    to shown in grey. Group totals count each storyline once.
 7. It names each storyline after its final quest, skipping generic names like "Return to …".
 
-The current data has **425 storylines and 504 side quests across 72 zones**.
+The current data has **477 storylines and 1,034 side quests across 77 zones and 9 classes**.
 
 Because the storylines are generated, some may be off: a few chains get merged or split, and
 some names aren't great. You can correct these in `tools/overrides.py` (story names, zones,
-extra links, excluded quests). QuestieDB doesn't have quests for Forever's new zones yet. Once
-it does, regenerating the data adds them.
+extra links, excluded quests, dungeons QuestieDB doesn't list yet). Forever quests that QuestieDB
+doesn't know yet are missing until it adds them; regenerating the data picks them up.
 
 ### Regenerating the data
 
 ```sh
-python3 tools/generate_data.py            # downloads the latest QuestieDB data and rebuilds both data files
+python3 tools/generate_data.py            # updates QuestieDB (sparse checkout in tools/.cache) and rebuilds both data files
+python3 tools/generate_data.py --questiedb ../QuestieDB   # or use an existing QuestieDB checkout
 python3 tools/generate_data.py --report   # also prints every zone's storylines with their keys
 python3 tools/show_story.py Westfall      # shows the quests of each storyline in a zone (or by quest ID)
 ```

@@ -16,13 +16,14 @@ for line in text.splitlines():
     if m:
         zone = m.group(2)
         continue
-    m = re.match(r'\{"((?:[^"\\]|\\.)*)",\{(.*)\}\},$', line)
+    m = re.match(r'\{"((?:[^"\\]|\\.)*)",\{(.*?)\}(?:,"((?:[^"\\]|\\.)*)")?\},$', line)
     if not m:
         continue
     steps = re.findall(r"\{[\d,]+\}|\d+", m.group(2))
     ids = [int(x) for x in re.findall(r"\d+", m.group(2))]
     if any(a == zone or (a.isdigit() and int(a) in ids) for a in sys.argv[1:]):
-        print("%s :: %s (%d steps)" % (zone, m.group(1), len(steps)))
+        horde = (" | Horde: " + m.group(3)) if m.group(3) else ""
+        print("%s :: %s%s (%d steps)" % (zone, m.group(1), horde, len(steps)))
         for st in steps:
             alts = [int(x) for x in re.findall(r"\d+", st)]
             print("    " + " / ".join("%d %s [%d]%s" % (q, quests[q][0], quests[q][1], " AH"[quests[q][2]]) for q in alts))
