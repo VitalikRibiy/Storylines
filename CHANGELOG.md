@@ -2,7 +2,7 @@
 
 All notable changes to Storylines. The newest version is at the top.
 
-## [0.5.0] - Unreleased
+## [0.5.0] - 2026-10-04
 
 ### Added
 - **Options page** under Options → AddOns → Storylines. Open it with `/stl options` or by
