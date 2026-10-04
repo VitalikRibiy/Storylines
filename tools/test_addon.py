@@ -552,6 +552,50 @@ def main():
         end""")
     check("AlertNew" not in row_text, "the icon goes away once the reputation is reached")
 
+    print("Storyline grouping (player reports):")
+    isha = lua_do("""local ns = ...
+        local s = ns.storiesByQuest[873][1]
+        local ids = {}
+        for _, step in ipairs(s.steps) do ids[#ids + 1] = ns.StepIDs(step)[1] end
+        return table.concat(ids, ',')""")
+    check(isha.startswith("844,") and ",860" not in isha and ",861" not in isha,
+          "Isha Awak starts at Plainstrider Menace; the Sergra Darkthorn breadcrumb is not part of it (%s)" % isha)
+    check(lua_do("local ns = ... return ns.storiesByQuest[860][1] ~= ns.storiesByQuest[873][1]"),
+          "The Hunter's Way / Sergra Darkthorn is its own storyline")
+    lua_do("local ns = ... __faction, __race = 'Horde', 5 ns:UpdatePlayerInfo()")
+    uc = lua_do("""local ns = ...
+        local out = {}
+        for _, s in ipairs(ns:GetZoneStories(1497)) do
+            if s.zone ~= 1497 then out[#out + 1] = s.name .. '@' .. ns.Zones[s.zone].name end
+        end
+        for _, e in ipairs(ns:GetZoneSideQuests(1497)) do
+            if e.homeZone then out[#out + 1] = ns:GetQuestName(e.questID) .. '@' .. ns.Zones[e.homeZone].name end
+        end
+        return table.concat(out, '; ')""")
+    print("    Undercity also lists:", uc[:300], "...")
+    check("Hearts of Zeal@Razorfen Kraul" in uc, "Undercity lists the Hearts of Zeal storyline it starts")
+    check("The Book of Ur@Shadowfang Keep" in uc, "Undercity lists The Book of Ur (Shadowfang Keep quest picked up there)")
+    lua_do("local ns = ... ns:ShowUI(1497)")
+    rows = lua_do("""local ns = ...
+        local out = {}
+        for _, row in ipairs(StorylinesFrame.storyList.rows) do
+            if row:IsShown() and row.item and row.item.elsewhere then out[#out + 1] = row.text:GetText() end
+        end
+        return table.concat(out, ' | ')""")
+    check("(Razorfen Kraul)" in rows, "rows filed elsewhere show their zone (%s)" % rows[:120])
+    dupes = lua_do("""local ns = ...
+        local seen, dupes = {}, 0
+        for _, zone in pairs(ns.Zones) do
+            local local_seen = {}
+            for _, s in ipairs(zone.allStories) do
+                if local_seen[s] then dupes = dupes + 1 end
+                local_seen[s] = true
+            end
+        end
+        return dupes""")
+    check(dupes == 0, "no storyline is listed twice in the same zone")
+    lua_do("local ns = ... __faction, __race = 'Alliance', 1 ns:UpdatePlayerInfo()")
+
     print("Data sanity:")
     bad = lua_do("""local ns = ...
         local missing = 0

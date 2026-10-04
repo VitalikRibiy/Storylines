@@ -227,13 +227,25 @@ local function progressColor(done, total)
 end
 
 local function BuildZoneItems()
-    local byGroup = {}
+    local byGroup, groupDone, groupTotal, counted = {}, {}, {}, {}
     for areaID, zone in pairs(ns.Zones) do
         local done, total = ns:GetZoneProgress(areaID)
         if total > 0 then
-            byGroup[zone.group] = byGroup[zone.group] or {}
-            table.insert(byGroup[zone.group], { type = "zone", areaID = areaID, done = done, total = total,
+            local group = zone.group
+            byGroup[group] = byGroup[group] or {}
+            table.insert(byGroup[group], { type = "zone", areaID = areaID, done = done, total = total,
                 name = ns:GetZoneName(areaID) })
+            -- A storyline can be listed in two zones (where it is picked up and where it happens);
+            -- count it once in the group total.
+            counted[group] = counted[group] or {}
+            for _, story in ipairs(ns:GetZoneStories(areaID)) do
+                if not counted[group][story] then
+                    counted[group][story] = true
+                    local d, t = ns:GetStoryProgress(story)
+                    groupTotal[group] = (groupTotal[group] or 0) + 1
+                    groupDone[group] = (groupDone[group] or 0) + ((d == t) and 1 or 0)
+                end
+            end
         end
     end
     local items = {}
@@ -241,10 +253,7 @@ local function BuildZoneItems()
         local zones = byGroup[group]
         if zones then
             table.sort(zones, function(a, b) return a.name < b.name end)
-            local done, total = 0, 0
-            for _, z in ipairs(zones) do
-                done, total = done + z.done, total + z.total
-            end
+            local done, total = groupDone[group] or 0, groupTotal[group] or 0
             local collapsed = ns.db.collapsedGroups[group]
             table.insert(items, { type = "group", group = group, done = done, total = total, collapsed = collapsed })
             if not collapsed then
@@ -330,6 +339,7 @@ local function BuildStoryItems(areaID)
             local expanded = expandedStories[story.key]
             table.insert(items, { type = "story", story = story, done = done, total = total, started = started,
                 complete = complete, ignored = ignored, expanded = expanded,
+                elsewhere = story.zone ~= areaID and story.zone or nil,
                 repProblems = not complete and ns:GetStoryReputationProblems(story) or nil })
             if expanded then
                 local index = 0
@@ -372,7 +382,8 @@ local function BuildStoryItems(areaID)
             table.insert(items, { type = "sideHeader", done = done, total = total })
             if not sideCollapsed then
                 for _, entry in ipairs(list) do
-                    table.insert(items, { type = "side", questID = entry.questID, state = entry.state })
+                    table.insert(items, { type = "side", questID = entry.questID, state = entry.state,
+                        elsewhere = entry.homeZone })
                 end
             end
         end
@@ -426,6 +437,7 @@ local function UpdateStoryRow(row, item)
             desaturate = desat,
             text = (item.expanded and "- " or "+ ") .. item.story.name .. ns:GetStoryTagMarkup(item.story, 14)
                 .. ((item.repProblems and #item.repProblems > 0) and (" |T" .. ns.WARNING_ICON .. ":14:14|t") or "")
+                .. (item.elsewhere and (" |cff909090(" .. ns:GetZoneName(item.elsewhere) .. ")|r") or "")
                 .. (item.ignored and " |cffff6060(ignored)|r" or ""),
             font = "GameFontNormal",
             color = (item.complete or item.ignored) and COLOR_DONE or COLOR_GOLD,
@@ -461,7 +473,8 @@ local function UpdateStoryRow(row, item)
             indent = item.type == "step" and 18 or 6,
             icon = ignored and ICON_IGNORED or icon,
             desaturate = desat and not ignored,
-            text = ns:FormatQuestLine(item.questID, item.type == "step" and (item.index .. ". ") or nil, item.state),
+            text = ns:FormatQuestLine(item.questID, item.type == "step" and (item.index .. ". ") or nil, item.state)
+                .. (item.elsewhere and (" |cff909090(" .. ns:GetZoneName(item.elsewhere) .. ")|r") or ""),
             font = "GameFontHighlightSmall",
             color = color,
             strike = item.state == ns.STATE_DONE,
@@ -529,6 +542,10 @@ local function OnStoryRowEnter(row)
         GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
         GameTooltip:SetText(item.story.name, 1, 0.82, 0)
         GameTooltip:AddLine(("%d of %d quests completed"):format(item.done, item.total), 1, 1, 1)
+        if item.elsewhere then
+            GameTooltip:AddLine(("You pick it up here; most of it takes place in %s."):format(
+                ns:GetZoneName(item.elsewhere)), 0.6, 0.8, 1, true)
+        end
         if item.complete then
             GameTooltip:AddLine("Storyline complete!", 0.25, 1, 0.25)
         end

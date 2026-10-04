@@ -295,6 +295,7 @@ def build(offline):
     prereqs = defaultdict(set)  # quest -> quests that must come before it
     exclusive = defaultdict(set)
     breadcrumbs = set()
+    lead_ins = {}  # breadcrumb quest -> the quest it leads to (kept as separate storylines/side quests)
     for qid, k in kept.items():
         q = k["raw"]
         uf.find(qid)
@@ -306,7 +307,13 @@ def build(offline):
                 prereqs[qid].add(p)
         nxt = q.get(NEXT)
         if nxt in kept and nxt != qid:
-            prereqs[nxt].add(qid)
+            target = kept[nxt]["raw"]
+            if qid in ids(target.get(PRE_SINGLE)) + ids(target.get(PRE_GROUP)):
+                prereqs[nxt].add(qid)
+            else:
+                # "Next in chain" without the target requiring this quest: an optional breadcrumb that
+                # leads to another chain (e.g. Sergra Darkthorn -> Plainstrider Menace). Not a story step.
+                lead_ins[qid] = nxt
         if q.get(PARENT) in kept:
             prereqs[qid].add(q[PARENT])
         for c in ids(q.get(CHILDREN)):
@@ -369,7 +376,25 @@ def build(offline):
                         key=lambda s: (-depth[s], -max(kept[q]["level"] for q in steps[s]), steps[s][0]))
         return [steps[s] for s in order], [steps[s] for s in finals]
 
-    zones = defaultdict(lambda: {"stories": [], "side": []})
+    npcs = luatable.parse(luatable.extract_long_strings(fetch("npcs", offline))["QuestieDB.npcData"])
+    objects = luatable.parse(luatable.extract_long_strings(fetch("objects", offline))["QuestieDB.objectData"])
+
+    def giver_zone(qid):
+        """Open-world zone (not a dungeon) where the quest is picked up, or None."""
+        started = kept[qid]["raw"].get(2) or {}
+        for index, db, zone_field, spawn_field in ((1, npcs, 9, 7), (2, objects, 5, 4)):
+            for gid in ids(started.get(index)):
+                record = db.get(gid)
+                if not record:
+                    continue
+                spawns = record.get(spawn_field) or {}
+                area = record.get(zone_field) if record.get(zone_field) in spawns else next(iter(sorted(spawns)), None)
+                zone = resolve_zone(area) if area else None
+                if zone and zone not in dungeons:
+                    return zone
+        return None
+
+    zones = defaultdict(lambda: {"stories": [], "side": [], "also": [], "alsoSide": []})
     for members in groups.values():
         zone_votes = Counter(kept[q]["zone"] for q in members)
         top = max(zone_votes.values())
@@ -379,15 +404,23 @@ def build(offline):
         story_key = min(members)
         zone = overrides.STORY_ZONE.get(story_key, zone)
         ordered, finals = ordered_steps(members)
+        # Also list it where you pick it up, if that is another zone or city (e.g. Undercity for
+        # Shadowfang Keep quests, Mulgore for a chain that continues in The Barrens).
+        start_zones = {giver_zone(q) for q in ordered[0]} - {None, zone}
         if len(ordered) == 1:
             zones[zone]["side"].append(ordered[0])
+            for other in start_zones:
+                zones[other]["alsoSide"].append(ordered[0])
             continue
         zones[zone]["stories"].append({"key": story_key, "steps": ordered,
                                        "name": story_name(story_key, ordered, finals, kept)})
+        for other in start_zones:
+            zones[other]["also"].append(story_key)
 
     return {"kept": kept, "zones": zones, "dungeons": dungeons, "area_names": area_names,
             "area_to_map": area_to_map, "map_to_area": map_to_area, "skipped": skipped,
-            "breadcrumbs": breadcrumbs, "quests": quests, "prereqs": prereqs, "resolve_zone": resolve_zone}
+            "breadcrumbs": breadcrumbs, "quests": quests, "prereqs": prereqs, "resolve_zone": resolve_zone,
+            "lead_ins": lead_ins}
 
 
 GENERIC_PREFIX = re.compile(r"^(Return to|Report to|Report back|Speak (with|to)|Talk to|Seek out|Back to|"
@@ -448,7 +481,8 @@ def write_lua(kept, zones, dungeons, area_names, area_to_map, stats):
         "}",
         "",
         "-- [areaID] = { name, uiMapID, group (1 Eastern Kingdoms / 2 Kalimdor / 3 Dungeons & Raids / 4 Battlegrounds),",
-        "--              parent areaID (dungeons), stories = { {name, {steps}} }, side = {steps} }",
+        "--              parent areaID (dungeons), stories = { {name, {steps}} }, side = {steps},",
+        "--              also = {story keys of storylines filed elsewhere that start here}, alsoSide = {steps} }",
         "-- A step is a questID, or a table of mutually exclusive questIDs (any one of them completes the step).",
         "ns.Zones = {",
     ]
@@ -472,6 +506,11 @@ def write_lua(kept, zones, dungeons, area_names, area_to_map, stats):
         lines.append("},")
         side = sorted(z["side"], key=lambda st: (kept[st[0]]["level"], st[0]))
         lines.append("side={%s}," % ",".join(step_lua(st) for st in side))
+        if z["also"]:
+            lines.append("also={%s}," % ",".join(str(k) for k in sorted(z["also"])))
+        if z["alsoSide"]:
+            also_side = sorted(z["alsoSide"], key=lambda st: (kept[st[0]]["level"], st[0]))
+            lines.append("alsoSide={%s}," % ",".join(step_lua(st) for st in also_side))
         lines.append("},")
     lines.append("}")
     os.makedirs(os.path.dirname(OUTPUT), exist_ok=True)

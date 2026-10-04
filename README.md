@@ -1,5 +1,7 @@
 # Storylines
 
+**[Get it on CurseForge](https://www.curseforge.com/wow/addons/storylines-forever)**
+
 A **WoW Forever** addon that brings retail's zone "Storylines" list to the classic world.
 
 Each zone lists its quest chains (storylines). Each storyline shows how far you've got, and it
@@ -51,7 +53,7 @@ zone has, which ones you skipped completely, and which quest in a chain you need
 
 ## Installation
 
-1. **[Download Storylines 0.3.0](https://github.com/VitalikRibiy/Storylines/raw/refs/heads/claude/wow-forever-story-tracker-vrrpsz/dist/Storylines-0.3.0.zip)**
+1. **[Download Storylines 0.3.1](https://github.com/VitalikRibiy/Storylines/raw/refs/heads/claude/wow-forever-story-tracker-vrrpsz/dist/Storylines-0.3.1.zip)**
    and unzip it. You get a folder called `Storylines`.
 2. Move that folder into the `Interface\AddOns` folder of your WoW Forever installation.
    `Storylines.toc` must sit directly inside it (`Interface\AddOns\Storylines\Storylines.toc`).
@@ -92,11 +94,16 @@ or battleground also gets that type.
    anything becomes a side quest.
 3. Mutually exclusive quests (e.g. "pick one of these") count as a single step.
 4. Alliance and Horde versions of the same chain stay separate storylines.
-5. It files each storyline under the zone that has most of its quests and orders the steps by
-   prerequisites, then by quest level.
-6. It names each storyline after its final quest, skipping generic names like "Return to …".
+5. "Next quest" links that the next quest doesn't actually require are optional **breadcrumbs**
+   (e.g. *Sergra Darkthorn* → *Plainstrider Menace*). They stay separate instead of being added
+   to the chain they lead to.
+6. It files each storyline under the zone that has most of its quests and orders the steps by
+   prerequisites, one branch at a time. If you pick up its first quest in a different zone or city
+   (e.g. Shadowfang Keep quests from Undercity), it is listed there too, with the zone it belongs
+   to shown in grey. Group totals count each storyline once.
+7. It names each storyline after its final quest, skipping generic names like "Return to …".
 
-The current data has **438 storylines and 456 side quests across 72 zones**.
+The current data has **425 storylines and 504 side quests across 72 zones**.
 
 Because the storylines are generated, some may be off: a few chains get merged or split, and
 some names aren't great. You can correct these in `tools/overrides.py` (story names, zones,

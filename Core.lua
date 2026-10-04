@@ -50,6 +50,8 @@ end
 ---------------------------------------------------------------------------
 
 ns.storiesByQuest = {} -- questID -> { story, ... }
+ns.storyByKey = {}     -- story key (lowest quest ID) -> story
+ns.sideZoneByQuest = {} -- side quest ID -> areaID it is filed under
 ns.areaByMap = {}      -- uiMapID -> areaID
 ns.areaByName = {}     -- lower-case zone name -> areaID
 
@@ -80,11 +82,53 @@ function ns:BuildIndex()
             end
             story.key = key
             zone.stories[i] = story
+            self.storyByKey[key] = story
+        end
+        for _, step in ipairs(zone.side) do
+            self.sideZoneByQuest[stepIDs(step)[1]] = areaID
         end
         if zone.uiMap and zone.uiMap > 0 then
             self.areaByMap[zone.uiMap] = areaID
         end
         self.areaByName[zone.name:lower()] = areaID
+    end
+    -- Storylines and side quests filed under another zone but picked up here (zone.also / zone.alsoSide)
+    -- are listed in both places. Merge them into level order.
+    local function firstLevel(step)
+        local q = self.Quests[stepIDs(step)[1]]
+        return q and q[2] or 0
+    end
+    for _, zone in pairs(self.Zones) do
+        local all = {}
+        for _, story in ipairs(zone.stories) do
+            all[#all + 1] = story
+        end
+        for _, key in ipairs(zone.also or {}) do
+            all[#all + 1] = self.storyByKey[key]
+        end
+        table.sort(all, function(a, b)
+            local la, lb = firstLevel(a.steps[1]), firstLevel(b.steps[1])
+            if la ~= lb then
+                return la < lb
+            end
+            return a.key < b.key
+        end)
+        zone.allStories = all
+        local side = {}
+        for _, step in ipairs(zone.side) do
+            side[#side + 1] = step
+        end
+        for _, step in ipairs(zone.alsoSide or {}) do
+            side[#side + 1] = step
+        end
+        table.sort(side, function(a, b)
+            local la, lb = firstLevel(a), firstLevel(b)
+            if la ~= lb then
+                return la < lb
+            end
+            return stepIDs(a)[1] < stepIDs(b)[1]
+        end)
+        zone.allSide = side
     end
 end
 
@@ -273,7 +317,7 @@ function ns:GetZoneStories(areaID, includeIgnored)
     if not zone then
         return list
     end
-    for _, story in ipairs(zone.stories) do
+    for _, story in ipairs(zone.allStories) do
         local _, total = self:GetStoryProgress(story)
         if total > 0 and (includeIgnored or not self:IsStoryIgnored(story)) then
             list[#list + 1] = story
@@ -282,18 +326,20 @@ function ns:GetZoneStories(areaID, includeIgnored)
     return list
 end
 
---- Side quests (quests that are not part of a chain) of a zone for the current character.
--- @return list of { questID, state }
+--- Side quests (quests that are not part of a chain) of a zone for the current character, including
+-- the ones filed under another zone (e.g. a dungeon) but picked up here.
+-- @return list of { questID, state, homeZone (areaID when filed under another zone) }
 function ns:GetZoneSideQuests(areaID)
     local list = {}
     local zone = self.Zones[areaID]
     if not zone then
         return list
     end
-    for _, step in ipairs(zone.side) do
+    for _, step in ipairs(zone.allSide) do
         local questID, state = self:ResolveStep(step)
         if questID then
-            list[#list + 1] = { questID = questID, state = state }
+            local home = self.sideZoneByQuest[stepIDs(step)[1]]
+            list[#list + 1] = { questID = questID, state = state, homeZone = home ~= areaID and home or nil }
         end
     end
     return list
