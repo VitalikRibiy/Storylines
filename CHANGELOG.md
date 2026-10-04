@@ -2,7 +2,7 @@
 
 All notable changes to Storylines. The newest version is at the top.
 
-## [0.4.0] - Unreleased
+## [0.4.0] - 2026-10-04
 
 ### Added
 - **All of WoW Forever's quests.** Storylines now knows every WoW Forever quest, including the
