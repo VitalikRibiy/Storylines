@@ -2,7 +2,7 @@
 
 All notable changes to Storylines. The newest version is at the top.
 
-## [0.5.1] - Unreleased
+## [0.5.1] - 2026-10-05
 
 ### Added
 - **Search.** Type in the box at the top left of the window (or `/stl find <name>`) to find
