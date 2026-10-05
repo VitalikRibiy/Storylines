@@ -2,7 +2,7 @@
 ## Title: Storylines
 ## Notes: Retail-style zone storylines for WoW Forever: see every quest chain in a zone and cross them off as you complete them.
 ## Author: VitalikRibiy
-## Version: 0.5.1
+## Version: 0.5.2
 ## Category: Quests
 ## X-Curse-Project-ID: 1724808
 ## SavedVariables: StorylinesDB

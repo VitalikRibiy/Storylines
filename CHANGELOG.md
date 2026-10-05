@@ -2,7 +2,7 @@
 
 All notable changes to Storylines. The newest version is at the top.
 
-## [0.5.2] - Unreleased
+## [0.5.2] - 2026-10-05
 
 ### Added
 - **Storyline branches as a tree.** When a quest opens several lines, each line is listed
