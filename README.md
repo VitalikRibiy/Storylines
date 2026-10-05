@@ -15,6 +15,9 @@ zone has, which ones you skipped completely, and which quest in a chain you need
   `completed / total` storylines per zone. An arrow marks the zone you're in. **Dungeons & Raids**
   lists every dungeon and raid (all 26 classic ones and WoW Forever's 9 new ones), each with the
   storylines that lead into it. Dungeons whose quests aren't known yet say "no quests yet".
+- **Search** (top left of the window, or `/stl find <name>`): find zones, dungeons and raids,
+  storylines and quests by name, and see which storyline and zone each quest belongs to. Click a
+  result to open it.
 - **Storyline list** for the selected zone, with a progress bar, level range, `done/total` count
   and a check mark plus strike-through for finished storylines.
 - **Click a storyline** to see its quests in order, one branch at a time. Each quest shows
@@ -90,6 +93,7 @@ and run `tools/package.sh` (writes `dist/Storylines-<version>.zip`).
 | --- | --- |
 | `/storylines` or `/stl` | Open/close the window |
 | `/stl zone <name>` or `/stl <name>` | Open a zone by name or the start of it, e.g. `/stl westf` |
+| `/stl find <name>` | Find zones, dungeons, storylines and quests by name |
 | `/stl options` | Open the settings |
 | `/stl minimap` | Show/hide the minimap button |
 | `/stl announce` | Turn the storyline progress messages on/off |

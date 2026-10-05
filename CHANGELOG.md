@@ -2,6 +2,22 @@
 
 All notable changes to Storylines. The newest version is at the top.
 
+## [0.5.1] - Unreleased
+
+### Added
+- **Search.** Type in the box at the top left of the window (or `/stl find <name>`) to find
+  zones, dungeons and raids, storylines and quests by name. Each quest shows its storyline and
+  zone; click a result to open it.
+
+### Fixed
+- **Storylines are listed in another zone only if you start them there.** Durotar's **Burning
+  Blade Medallion** no longer shows in Tirisfal Glades unless you are an Undead warlock, who
+  starts it there.
+- **"Pick one" steps with a version for each starting zone show your own version.** For example,
+  Undead warlocks see Piercing the Veil (Tirisfal Glades) and Orc and Troll warlocks see Vile
+  Familiars (Durotar). Shaman's **Call of Earth** shows in Mulgore for Tauren and in Durotar for
+  Orcs and Trolls.
+
 ## [0.5.0] - 2026-10-04
 
 ### Added

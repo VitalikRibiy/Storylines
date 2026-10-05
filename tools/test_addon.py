@@ -677,6 +677,34 @@ def main():
     check(shared == "Paladin=Paladin,Warrior=Warrior",
           "a quest for several classes belongs to the player's own class (%s)" % shared)
 
+    starts = lua_do("""local ns = ...
+        -- Durotar's "Burning Blade Medallion" starts with a pick-one of two warlock quests, one in
+        -- Tirisfal Glades (Undead) and one in Durotar (Orc, Troll): it is listed in Tirisfal Glades
+        -- only for Undead warlocks, and in Durotar for everyone.
+        local function listed(areaID)
+            for _, s in ipairs(ns:GetZoneStories(areaID)) do
+                if s.name == 'Burning Blade Medallion' then return 'y' end
+            end
+            return 'n'
+        end
+        local out = {}
+        for _, who in ipairs({ { 5, 1 }, { 5, 9 }, { 2, 9 } }) do
+            __faction, __race, __class = 'Horde', who[1], who[2] ns:UpdatePlayerInfo()
+            out[#out + 1] = listed(85) .. listed(14)
+        end
+        -- The warlock step shows the variant from your starting zone.
+        local story
+        for _, s in ipairs(ns:GetZoneStories(14)) do if s.name == 'Burning Blade Medallion' then story = s end end
+        __race = 5 ns:UpdatePlayerInfo()
+        local undead = ns:ResolveStep(story.steps[1])
+        __race = 2 ns:UpdatePlayerInfo()
+        local orc = ns:ResolveStep(story.steps[1])
+        __faction, __race, __class = 'Alliance', 1, 1 ns:UpdatePlayerInfo()
+        return table.concat(out, ' ') .. ' ' .. undead .. ' ' .. orc""")
+    check(starts.startswith("ny yy ny "),
+          "a storyline is listed where you start it: Undead warlocks in Tirisfal, others not (%s)" % starts)
+    check(starts.endswith(" 1470 1485"), "a pick-one step shows the variant from your starting zone (%s)" % starts)
+
     print("Dungeons:")
     wc = lua_do("""local ns = ...
         __faction, __race, __class = 'Horde', 2, 1 ns:UpdatePlayerInfo()
@@ -884,6 +912,76 @@ def main():
         ns:ClearIgnored()
         return out""")
     check(reset == "1 false 90 true", "reset to defaults keeps ignored quests and the minimap position (%s)" % reset)
+
+    print("Search:")
+    found = lua_do("""local ns = ...
+        __faction, __race, __class, __level = 'Alliance', 1, 1, 20 ns:UpdatePlayerInfo()
+        SlashCmdList.STORYLINES('find defias brotherhood')
+        local out = {}
+        for _, item in ipairs(StorylinesFrame.storyList.items) do
+            if item.search then
+                out[#out + 1] = (item.questID and (item.questID .. ':' .. ns:GetQuestName(item.questID)) or item.story.name)
+                    .. '@' .. (item.storyName or '-') .. '@' .. ns:GetZoneName(item.areaID)
+            end
+        end
+        return StorylinesFrame.zoneTitle:GetText() .. '#' .. table.concat(out, ';')""")
+    print("   " + found[:300])
+    title, results = found.split("#", 1)
+    check(title == "Search: |cffffffffdefias brotherhood|r", "/stl find shows a search (%s)" % title)
+    check("The Defias Brotherhood@-@Westfall" in results, "storylines are found by name")
+    check("166:The Defias Brotherhood@The Defias Brotherhood@Westfall" in results,
+          "a quest result names its storyline and zone")
+    opened = lua_do("""local ns = ...
+        -- click the quest result: its zone opens, the storyline is expanded and the quest inspected
+        local target
+        for _, item in ipairs(StorylinesFrame.storyList.items) do
+            if item.search and item.questID == 166 then target = item end
+        end
+        local row = StorylinesFrame.storyList.rows[1]
+        row.item = target
+        row:GetScript('OnClick')(row, 'LeftButton')
+        local stepShown = false
+        for _, item in ipairs(StorylinesFrame.storyList.items) do
+            if item.type == 'step' and item.questID == 166 then stepShown = true end
+        end
+        return tostring(ns.searchText) .. ' ' .. ns:GetZoneName(ns.selectedArea) .. ' '
+            .. tostring(ns:GetInspected().questID) .. ' ' .. tostring(stepShown) .. ' [' .. StorylinesFrame.search:GetText() .. ']'""")
+    check(opened == "nil Westfall 166 true []", "clicking a result opens its zone, storyline and quest (%s)" % opened)
+    none = lua_do("""local ns = ...
+        ns:Search('zzzzqq')
+        local note = StorylinesFrame.storyList.items[1].text
+        ns:ClearSearch()
+        return note""")
+    check(none == "No zone, storyline or quest found for your character.", "an empty search says so")
+    zone_hit = lua_do("""local ns = ...
+        -- dungeons and zones are found by name; clicking one opens it
+        ns:Search('wailing')
+        local target, names = nil, {}
+        for _, item in ipairs(StorylinesFrame.storyList.items) do
+            if item.type == 'zoneResult' then
+                names[#names + 1] = item.name
+                if item.name == 'Wailing Caverns' then target = item end
+            end
+        end
+        local row = StorylinesFrame.storyList.rows[1]
+        row.item = target
+        row:GetScript('OnClick')(row, 'LeftButton')
+        return table.concat(names, ',') .. ' -> ' .. ns:GetZoneName(ns.selectedArea) .. ' ' .. tostring(ns.searchText)""")
+    check(zone_hit == "Wailing Caverns -> Wailing Caverns nil", "dungeons are found by name and open on click (%s)" % zone_hit)
+    westf = lua_do("""local ns = ...
+        ns:Search('westf')
+        local first = StorylinesFrame.storyList.items[2]
+        ns:ClearSearch()
+        return first.type .. ' ' .. first.name""")
+    check(westf == "zoneResult Westfall", "zones are listed first in the results (%s)" % westf)
+    other = lua_do("""local ns = ...
+        -- Horde-only quests aren't found by an Alliance character
+        ns:Search('Vile Familiars')
+        local n = 0
+        for _, item in ipairs(StorylinesFrame.storyList.items) do if item.search then n = n + 1 end end
+        ns:ClearSearch()
+        return n""")
+    check(other == 0, "search only finds quests for your character (%s found)" % other)
 
     print("Professions:")
     prof = lua_do("""local ns = ...

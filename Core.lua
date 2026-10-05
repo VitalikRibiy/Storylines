@@ -355,8 +355,23 @@ end
 
 --- Resolves a story step for the current character.
 -- @return questID to show (nil when the step is not available to this character), state
+-- Starting zone of each original race: Human, Orc, Dwarf, Night Elf, Undead, Tauren, Gnome, Troll.
+local RACE_START_ZONE = { 12, 14, 1, 141, 85, 215, 1, 14 }
+
+--- Whether a quest is picked up in the character's starting zone (by race).
+local function givenInStartZone(questID)
+    local home = playerRace and RACE_START_ZONE[playerRace]
+    local d = home and ns.QuestDetails and ns.QuestDetails[questID]
+    if not d or not ns.GetGiver then
+        return false
+    end
+    local _, _, area = ns:GetGiver(d[4], d[5])
+    return area == home
+end
+
 function ns:ResolveStep(step)
-    local shown, state = nil, nil
+    local shown, state, preferred = nil, nil, false
+    local alternatives = type(step) == "table" and #step > 1
     for _, questID in ipairs(stepIDs(step)) do
         if self:IsQuestForPlayer(questID) then
             if self:IsQuestCompleted(questID) then
@@ -369,6 +384,11 @@ function ns:ResolveStep(step)
                 end
             elseif not shown then
                 shown, state = questID, self.STATE_TODO
+                preferred = alternatives and givenInStartZone(questID)
+            elseif state == self.STATE_TODO and not preferred and alternatives and givenInStartZone(questID) then
+                -- Of several alternatives you could take (race or starting-zone variants), show the one
+                -- from your own starting zone.
+                shown, preferred = questID, true
             end
         end
     end
@@ -489,11 +509,32 @@ function ns:GetZoneStories(areaID, includeIgnored)
     end
     for _, story in ipairs(zone.allStories) do
         local _, total = self:GetStoryProgress(story)
-        if total > 0 and (includeIgnored or not self:IsStoryIgnored(story)) then
+        if total > 0 and (includeIgnored or not self:IsStoryIgnored(story)) and self:StartsHereForPlayer(zone, story) then
             list[#list + 1] = story
         end
     end
     return list
+end
+
+--- A storyline listed in a zone only because it is picked up there (zone.alsoVia) is shown there only
+-- to characters who start it with one of the quests picked up there: the quest shown for them in its
+-- step (e.g. the variant from their own starting zone of a "pick one" step).
+function ns:StartsHereForPlayer(zone, story)
+    local via = zone.alsoVia and zone.alsoVia[story.key]
+    if not via then
+        return true
+    end
+    for _, step in ipairs(story.steps) do
+        local shown = self:ResolveStep(step)
+        if shown then
+            for _, questID in ipairs(via) do
+                if questID == shown then
+                    return true
+                end
+            end
+        end
+    end
+    return false
 end
 
 --- Side quests (quests that are not part of a chain) of a zone for the current character, including
@@ -761,10 +802,13 @@ local function slashHandler(msg)
         ns:OpenOptions()
     elseif cmd == "zone" or cmd == "z" then
         showZone(rest)
+    elseif cmd == "find" or cmd == "search" then
+        ns:Search(rest)
     elseif cmd == "help" then
         ns:Print("Commands:")
         ns:Print("/storylines - toggle the window")
         ns:Print("/storylines zone <name> - show a zone (e.g. /stl zone westfall, or just /stl westf)")
+        ns:Print("/storylines find <name> - find zones, dungeons, storylines and quests by name")
         ns:Print("/storylines options - open the settings")
         ns:Print("/storylines minimap - show/hide the minimap button")
         ns:Print("/storylines announce - toggle chat messages when you finish a storyline step")

@@ -538,7 +538,7 @@ def build(offline, questiedb=None):
                     return zone
         return None
 
-    zones = defaultdict(lambda: {"stories": [], "side": [], "also": [], "alsoSide": []})
+    zones = defaultdict(lambda: {"stories": [], "side": [], "also": [], "alsoSide": [], "alsoVia": {}})
     for members in groups.values():
         # A storyline belongs under a class only if all of it is class quests; a zone chain with a
         # class step (e.g. the warlock "Vile Familiars" leading into Durotar's chain) stays in the zone.
@@ -554,8 +554,22 @@ def build(offline, questiedb=None):
         ordered, finals = ordered_steps(members)
         # Also list it where you pick it up, if that is another zone or city (e.g. Undercity for
         # Shadowfang Keep quests, Mulgore for a chain that continues in The Barrens), and under the
-        # dungeons it leads into (below).
-        start_zones = {giver_zone(q) for q in ordered[0]} - {None, zone}
+        # dungeons it leads into (below). Where it is listed only because a quest starts there
+        # (alsoVia), the addon shows it there only to characters who start the storyline with one of
+        # those quests: of the "pick one" warlock quests before Durotar's "Burning Blade Medallion",
+        # only Undead warlocks get the one in Tirisfal Glades. When the first step is only for some
+        # classes or professions, everyone else starts at the first step open to all.
+        restricted = lambda q: kept[q]["classes"] or kept[q]["skill"]
+        start_steps = [ordered[0]]
+        if all(restricted(q) for q in ordered[0]):
+            start_steps += [step for step in ordered if not all(restricted(q) for q in step)][:1]
+        via = defaultdict(set)
+        for step in start_steps:
+            for q in step:
+                start_zone = giver_zone(q)
+                if start_zone and start_zone != zone:
+                    via[start_zone].add(q)
+        start_zones = set(via)
         if zone in CLASS_AREAS:
             # A class storyline several classes can do is listed under each of those classes. (A zone
             # storyline that merely contains a class step, e.g. a class letter, stays in its zone.)
@@ -578,6 +592,8 @@ def build(offline, questiedb=None):
                                        "names": {1: name_alliance, 2: name_horde}})
         for other in start_zones:
             zones[other]["also"].append(story_key)
+            if other in via:
+                zones[other]["alsoVia"][story_key] = sorted(via[other])
 
     disambiguate_names(zones, kept, npcs)
     for area in CLASSIC_DUNGEONS | set(overrides.EXTRA_DUNGEONS):
@@ -729,7 +745,9 @@ def write_lua(kept, zones, dungeons, area_names, area_to_map, stats, source):
         "--              6 Professions: one entry per profession, keyed 300000 + skill line ID, with skill),",
         "--              parent areaID (dungeons), stories = { {name, {steps}, name for Horde if different} },",
         "--              side = {steps},",
-        "--              also = {story keys of storylines filed elsewhere that start here}, alsoSide = {steps} }",
+        "--              also = {story keys of storylines filed elsewhere that start here}, alsoSide = {steps},",
+        "--              alsoVia = { [story key] = {quests} }: listed here only for characters who can take",
+        "--              one of these quests (the ones picked up here) }",
         "-- A step is a questID, or a table of mutually exclusive questIDs (any one of them completes the step).",
         "ns.Zones = {",
     ]
@@ -767,6 +785,9 @@ def write_lua(kept, zones, dungeons, area_names, area_to_map, stats, source):
         if z["alsoSide"]:
             also_side = sorted(z["alsoSide"], key=lambda st: (kept[st[0]]["level"], st[0]))
             lines.append("alsoSide={%s}," % ",".join(step_lua(st) for st in also_side))
+        if z["alsoVia"]:
+            lines.append("alsoVia={%s}," % ",".join("[%d]={%s}" % (key, ",".join(map(str, quests)))
+                                                     for key, quests in sorted(z["alsoVia"].items())))
         lines.append("},")
     lines.append("}")
     os.makedirs(os.path.dirname(OUTPUT), exist_ok=True)

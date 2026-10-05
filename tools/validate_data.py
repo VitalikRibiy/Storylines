@@ -29,8 +29,9 @@ def load_data():
     def py(value, top=False):
         if lua51.lua_type(value) == "table":
             keys = list(value.keys())
-            # Positional rows may have nil holes (e.g. {name, level, faction, nil, classMask}).
-            if not top and keys and all(isinstance(k, int) and k > 0 for k in keys):
+            # Positional rows may have nil holes (e.g. {name, level, faction, nil, classMask}); tables
+            # keyed by IDs (e.g. alsoVia) stay dictionaries.
+            if not top and keys and all(isinstance(k, int) and k > 0 for k in keys) and max(keys) <= 2 * len(keys) + 4:
                 return [py(value[i]) if i in keys else None for i in range(1, max(keys) + 1)]
             return {k: py(v) for k, v in value.items()}
         return value

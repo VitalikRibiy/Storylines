@@ -363,6 +363,7 @@ local function OnZoneRowClick(row)
         ns.db.collapsedGroups[item.group] = not ns.db.collapsedGroups[item.group]
         frame.zoneList:SetItems(BuildZoneItems(), true)
     else
+        ns:ClearSearch()
         ns:SelectArea(item.areaID)
     end
 end
@@ -522,6 +523,91 @@ local function BuildStoryItems(areaID)
     return items
 end
 
+---------------------------------------------------------------------------
+-- Search: storylines and quests by name
+---------------------------------------------------------------------------
+
+local MAX_SEARCH_RESULTS = 200
+
+local function BuildSearchItems(text)
+    local zones, stories, quests = {}, {}, {}
+    -- Zones, dungeons, battlegrounds and your class and profession entries.
+    for areaID, zone in pairs(ns.Zones) do
+        local name = ns:GetZoneName(areaID)
+        if (name:lower():find(text, 1, true) or zone.name:lower():find(text, 1, true)) and ns:IsZoneForPlayer(zone) then
+            local done, total, sideDone, sideTotal = ns:GetZoneProgress(areaID)
+            if total > 0 or sideTotal > 0 or zone.group == 3 then
+                zones[#zones + 1] = { type = "zoneResult", search = true, areaID = areaID, name = name,
+                    done = done, total = total, sideDone = sideDone, sideTotal = sideTotal }
+            end
+        end
+    end
+    for _, story in pairs(ns.storyByKey) do
+        if story.name:lower():find(text, 1, true) then
+            local done, total, started = ns:GetStoryProgress(story)
+            if total > 0 then
+                stories[#stories + 1] = { type = "story", search = true, story = story, done = done, total = total,
+                    started = started, complete = done == total, ignored = ns:IsStoryIgnored(story),
+                    elsewhere = story.zone, areaID = story.zone }
+            end
+        end
+    end
+    for questID, q in pairs(ns.Quests) do
+        local name = ns:GetQuestName(questID)
+        if (name:lower():find(text, 1, true) or q[1]:lower():find(text, 1, true)) and ns:IsQuestForPlayer(questID) then
+            local list = ns.storiesByQuest[questID]
+            local story = list and list[1]
+            local areaID = story and story.zone or ns.sideZoneByQuest[questID]
+            if areaID then
+                quests[#quests + 1] = { type = "side", search = true, questID = questID, story = story,
+                    storyName = story and story.name or "side quest", elsewhere = areaID, areaID = areaID,
+                    state = select(2, ns:ResolveStep(questID)), sortName = name }
+            end
+        end
+    end
+    table.sort(zones, function(a, b) return a.name < b.name end)
+    table.sort(stories, function(a, b) return a.story.name < b.story.name end)
+    table.sort(quests, function(a, b)
+        if a.sortName ~= b.sortName then
+            return a.sortName < b.sortName
+        end
+        return a.questID < b.questID
+    end)
+    local items = {}
+    if #zones > 0 then
+        items[#items + 1] = { type = "header", text = "Zones", count = #zones }
+        for _, zone in ipairs(zones) do
+            items[#items + 1] = zone
+        end
+    end
+    if #stories > 0 then
+        if #items > 0 then
+            items[#items + 1] = { type = "spacer" }
+        end
+        items[#items + 1] = { type = "header", text = "Storylines", count = #stories }
+        for i = 1, math.min(#stories, MAX_SEARCH_RESULTS) do
+            items[#items + 1] = stories[i]
+        end
+    end
+    if #quests > 0 then
+        if #items > 0 then
+            items[#items + 1] = { type = "spacer" }
+        end
+        items[#items + 1] = { type = "header", text = "Quests", count = #quests }
+        for i = 1, math.min(#quests, MAX_SEARCH_RESULTS) do
+            items[#items + 1] = quests[i]
+        end
+    end
+    if #stories > MAX_SEARCH_RESULTS or #quests > MAX_SEARCH_RESULTS then
+        items[#items + 1] = { type = "note", text = ("Showing the first %d of each. Type more of the name."):format(
+            MAX_SEARCH_RESULTS) }
+    end
+    if #items == 0 then
+        items[#items + 1] = { type = "note", text = "No zone, storyline or quest found for your character." }
+    end
+    return items, #zones, #stories, #quests
+end
+
 --- Quest icon like the game's: yellow "?" ready to turn in, grey "?" in progress,
 -- yellow "!" can be picked up now, grey "!" not available yet.
 -- @return icon, desaturated, availability ("available" / "locked" / "reputation" / "level" / "skill" for quests
@@ -608,6 +694,7 @@ local function UpdateStoryRow(row, item)
             icon = ignored and ICON_IGNORED or icon,
             desaturate = desat and not ignored,
             text = ns:FormatQuestLine(item.questID, item.type == "step" and (item.index .. ". ") or nil, item.state)
+                .. (item.storyName and ("  |cffffd100" .. item.storyName .. "|r") or "")
                 .. (item.elsewhere and (" |cff909090(" .. ns:GetZoneName(item.elsewhere) .. ")|r") or ""),
             font = "GameFontHighlightSmall",
             color = color,
@@ -623,10 +710,65 @@ local function UpdateStoryRow(row, item)
             color = COLOR_GOLD,
             right = progressColor(item.done, item.total) .. item.done .. "/" .. item.total .. "|r",
         })
+    elseif item.type == "zoneResult" then
+        local zone = ns.Zones[item.areaID]
+        local where = ns.GROUP_NAMES[zone.group]
+        if zone.parent and zone.parent > 0 and ns.Zones[zone.parent] then
+            where = ns:GetZoneName(zone.parent)
+        end
+        local done, total, right = item.done, item.total, nil
+        if total == 0 and item.sideTotal == 0 then
+            right = "|cff707070no quests yet|r"
+        elseif total == 0 then
+            done, total = item.sideDone, item.sideTotal
+            right = "|cff909090side|r " .. progressColor(done, total) .. done .. "/" .. total .. "|r"
+        end
+        SetRow(row, {
+            icon = item.areaID == ns.currentArea and ICON_HERE or nil,
+            text = item.name .. " |cff909090(" .. where .. ")|r",
+            font = "GameFontNormal",
+            color = (total > 0 and done == total) and COLOR_GREEN or COLOR_WHITE,
+            right = right or (progressColor(done, total) .. done .. "/" .. total .. "|r"),
+        })
+    elseif item.type == "header" then
+        SetRow(row, { text = item.text, font = "GameFontNormal", color = COLOR_GOLD, right = tostring(item.count) })
     elseif item.type == "note" then
         SetRow(row, { text = item.text, font = "GameFontDisable", color = COLOR_DONE })
     else
         SetRow(row, {})
+    end
+end
+
+local function ScrollStoryListTo(match)
+    local list = frame.storyList
+    for i, item in ipairs(list.items) do
+        if match(item) then
+            local visible = list:NumVisible()
+            if i <= list.offset or i > list.offset + visible then
+                list.offset = math.max(0, i - 2)
+                list:Update()
+            end
+            return
+        end
+    end
+end
+
+--- Clicking a search result: show its zone with the storyline open, and its details.
+local function OpenSearchResult(item)
+    local story = item.story
+    ns:ClearSearch()
+    if story then
+        expandedStories[story.key] = true
+    end
+    ns:SelectArea(item.areaID)
+    if item.type == "zoneResult" then
+        return
+    elseif item.questID then
+        ns:InspectQuest(item.questID, story)
+        ScrollStoryListTo(function(i) return i.questID == item.questID end)
+    else
+        ns:InspectStory(story)
+        ScrollStoryListTo(function(i) return i.type == "story" and i.story == story end)
     end
 end
 
@@ -635,7 +777,9 @@ local function OnStoryRowClick(row, button)
     if not item then
         return
     end
-    if item.type == "story" then
+    if item.search and button ~= "RightButton" then
+        OpenSearchResult(item)
+    elseif item.type == "story" then
         if button == "RightButton" then
             local ignored = not ns:IsStoryIgnored(item.story)
             ns:SetStoryIgnored(item.story, ignored)
@@ -676,7 +820,7 @@ local function OnStoryRowEnter(row)
         GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
         GameTooltip:SetText(item.story.name, 1, 0.82, 0)
         GameTooltip:AddLine(("%d of %d quests completed"):format(item.done, item.total), 1, 1, 1)
-        if item.elsewhere then
+        if item.elsewhere and not item.search then
             GameTooltip:AddLine(("Also listed here because it starts or continues here; it belongs to %s."):format(
                 ns:GetZoneName(item.elsewhere)), 0.6, 0.8, 1, true)
         end
@@ -794,6 +938,45 @@ local function CreateMainFrame()
     local title = f:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     title:SetPoint("TOP", 0, -18)
     title:SetText("Storylines")
+
+    -- Search box (top left): storylines and quests by name.
+    local search = CreateFrame("EditBox", "StorylinesSearchBox", f, "InputBoxTemplate")
+    search:SetSize(190, 20)
+    search:SetPoint("TOPLEFT", 26, -15)
+    search:SetAutoFocus(false)
+    search:SetMaxLetters(60)
+    search.hint = search:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+    search.hint:SetPoint("LEFT", 2, 0)
+    search.hint:SetText("Search zones, storylines, quests")
+    local clear = CreateFrame("Button", nil, search)
+    clear:SetSize(14, 14)
+    clear:SetPoint("RIGHT", -2, 0)
+    clear:SetNormalTexture("Interface\\FriendsFrame\\ClearBroadcastIcon")
+    clear:SetScript("OnClick", function()
+        ns:ClearSearch()
+    end)
+    clear:Hide()
+    search.clear = clear
+    search:SetScript("OnTextChanged", function(self)
+        local text = self:GetText() or ""
+        self.hint:SetShown(text == "" and not self:HasFocus())
+        clear:SetShown(text ~= "")
+        ns:SetSearch(text)
+    end)
+    search:SetScript("OnEditFocusGained", function(self)
+        self.hint:Hide()
+    end)
+    search:SetScript("OnEditFocusLost", function(self)
+        self.hint:SetShown((self:GetText() or "") == "")
+    end)
+    search:SetScript("OnEscapePressed", function(self)
+        if (self:GetText() or "") ~= "" then
+            ns:ClearSearch()
+        end
+        self:ClearFocus()
+    end)
+    search:SetScript("OnEnterPressed", search.ClearFocus)
+    f.search = search
 
     local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", -6, -6)
@@ -1010,6 +1193,19 @@ function ns:RefreshUI(keepStoryOffset, skipInspector)
         ScrollZoneIntoView(self.selectedArea)
     end
 
+    if self.searchText then
+        local items, zoneCount, storyCount, questCount = BuildSearchItems(self.searchText)
+        frame.zoneTitle:SetText(("Search: |cffffffff%s|r"):format(self.searchRaw))
+        frame.zoneSummary:SetText(("Zones: |cffffffff%d|r    Storylines: |cffffffff%d|r    Quests: |cffffffff%d|r"):format(
+            zoneCount, storyCount, questCount))
+        frame.progressBar:SetValue(0)
+        frame.storyList:SetItems(items, keepStoryOffset)
+        if not skipInspector and self.RefreshInspector then
+            self:RefreshInspector(true)
+        end
+        return
+    end
+
     local areaID = self.selectedArea
     local zone = self.Zones[areaID]
     local title = self:GetZoneName(areaID)
@@ -1033,6 +1229,38 @@ function ns:RefreshUI(keepStoryOffset, skipInspector)
     if not skipInspector and self.RefreshInspector then
         self:RefreshInspector(true)
     end
+end
+
+--- Shows storylines and quests whose name contains the text (2 letters or more) instead of the zone.
+function ns:SetSearch(text)
+    text = strtrim(text or "")
+    local search = #text >= 2 and text:lower() or nil
+    if search == self.searchText then
+        return
+    end
+    self.searchText, self.searchRaw = search, text
+    if frame and frame:IsShown() then
+        self:RefreshUI(false)
+    end
+end
+
+--- Opens the window with a search (/stl find <name>).
+function ns:Search(text)
+    self:ShowUI()
+    frame.search:SetText(text or "")
+    frame.search.hint:SetShown((text or "") == "")
+    frame.search.clear:SetShown((text or "") ~= "")
+    self:SetSearch(text)
+end
+
+function ns:ClearSearch()
+    if frame and frame.search then
+        frame.search:SetText("")
+        frame.search:ClearFocus()
+        frame.search.clear:Hide()
+        frame.search.hint:Show()
+    end
+    self:SetSearch("")
 end
 
 function ns:ShowUI(areaID)
