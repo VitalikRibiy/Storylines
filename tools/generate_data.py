@@ -202,17 +202,36 @@ def lua_str(s):
 
 # --------------------------------------------------------------------------- ordering
 
-def chain_order(count, deps, sort_key):
+def chain_order(count, deps, sort_key, level=None):
     """Topological order of steps 0..count-1 that finishes one branch before starting the next.
 
     Prerequisites always come first. Among the steps that are ready, a successor of the most
-    recently placed step wins (depth-first), otherwise the lowest sort_key. Cycles in the data
-    are broken by placing the lowest remaining step.
+    recently placed step wins (depth-first), otherwise the lowest sort_key. When a step opens
+    several branches, a single quest that leads nowhere comes first (e.g. "Shredding Machines"
+    right after "Goblin Invaders", before the long main line), as long as it is within a few
+    levels of the others. Cycles in the data are broken by placing the lowest remaining step.
     """
     succ = defaultdict(set)
     for step, pre in deps.items():
         for p in pre:
             succ[p].add(step)
+
+    height = {}  # steps on the longest path after a step
+
+    def tail(step, stack=frozenset()):
+        if step not in height:
+            if step in stack:
+                return 0
+            height[step] = max([1 + tail(n, stack | {step}) for n in succ[step]] or [0])
+        return height[step]
+
+    def branch_key(step, candidates):
+        if level is None:
+            return sort_key(step)
+        low = min(level(s) for s in candidates)
+        side_quest = tail(step) == 0 and level(step) <= low + 5
+        return (not side_quest, sort_key(step))
+
     waiting = {step: set(deps.get(step, ())) for step in range(count)}
     ready = {step for step in range(count) if not waiting[step]}
     placed, order = set(), []
@@ -223,7 +242,7 @@ def chain_order(count, deps, sort_key):
         for prev in reversed(order):
             candidates = [s for s in succ[prev] if s in ready]
             if candidates:
-                pick = min(candidates, key=sort_key)
+                pick = min(candidates, key=lambda s: branch_key(s, candidates))
                 break
         if pick is None:
             pick = min(ready, key=sort_key)
@@ -515,13 +534,17 @@ def build(offline, questiedb=None):
             for p in prereqs.get(qid, ()):
                 if p in members and step_of[p] != step_of[qid]:
                     deps[step_of[qid]].add(step_of[p])
-        order = chain_order(len(steps), deps, lambda s: (min(kept[q]["level"] for q in steps[s]), min(steps[s])))
+        step_level = lambda s: min(kept[q]["level"] for q in steps[s])
+        order = chain_order(len(steps), deps, lambda s: (step_level(s), min(steps[s])), step_level)
         depth = longest_path_depths(len(steps), deps)
         # Ends of the chain (no later step depends on them), deepest first: used for the story name.
         needed = set().union(*deps.values()) if deps else set()
         finals = sorted((s for s in range(len(steps)) if s not in needed),
                         key=lambda s: (-depth[s], -max(kept[q]["level"] for q in steps[s]), steps[s][0]))
-        return [steps[s] for s in order], [steps[s] for s in finals]
+        # Each step's prerequisite steps, as 1-based positions in the ordered list (for the tree view).
+        position = {s: i + 1 for i, s in enumerate(order)}
+        parents = [sorted(position[p] for p in deps.get(s, ())) for s in order]
+        return [steps[s] for s in order], [steps[s] for s in finals], parents
 
     def giver_zone(qid):
         """Open-world zone (not a dungeon) where the quest is picked up, or None."""
@@ -551,7 +574,7 @@ def build(offline, questiedb=None):
                       key=lambda z: (z in dungeons, min(q for q in voters if kept[q]["zone"] == z)))[0]
         story_key = min(members)
         zone = overrides.STORY_ZONE.get(story_key, zone)
-        ordered, finals = ordered_steps(members)
+        ordered, finals, parents = ordered_steps(members)
         # Also list it where you pick it up, if that is another zone or city (e.g. Undercity for
         # Shadowfang Keep quests, Mulgore for a chain that continues in The Barrens), and under the
         # dungeons it leads into (below). Where it is listed only because a quest starts there
@@ -588,7 +611,7 @@ def build(offline, questiedb=None):
                 zones[other]["alsoSide"].append(ordered[0])
             continue
         name_alliance, name_horde = story_names(story_key, ordered, finals, kept)
-        zones[zone]["stories"].append({"key": story_key, "steps": ordered, "name": name_alliance,
+        zones[zone]["stories"].append({"key": story_key, "steps": ordered, "name": name_alliance, "parents": parents,
                                        "names": {1: name_alliance, 2: name_horde}})
         for other in start_zones:
             zones[other]["also"].append(story_key)
@@ -743,7 +766,9 @@ def write_lua(kept, zones, dungeons, area_names, area_to_map, stats, source):
         "-- [areaID] = { name, uiMapID, group (1 Eastern Kingdoms / 2 Kalimdor / 3 Dungeons & Raids / 4 Battlegrounds /",
         "--              5 Class Quests: one entry per class, keyed 100000 + class bit, with classFile /",
         "--              6 Professions: one entry per profession, keyed 300000 + skill line ID, with skill),",
-        "--              parent areaID (dungeons), stories = { {name, {steps}, name for Horde if different} },",
+        "--              parent areaID (dungeons), stories = { {name, {steps}, name for Horde if different,",
+        "--              {links}} }; links (branching storylines only): each step's prerequisite step(s) by",
+        "--              position, 0 for none,",
         "--              side = {steps},",
         "--              also = {story keys of storylines filed elsewhere that start here}, alsoSide = {steps},",
         "--              alsoVia = { [story key] = {quests} }: listed here only for characters who can take",
@@ -775,8 +800,15 @@ def write_lua(kept, zones, dungeons, area_names, area_to_map, stats, source):
         stories = sorted(z["stories"], key=lambda s: (min(kept[q]["level"] for st in s["steps"] for q in st), s["key"]))
         for s in stories:
             alliance, horde = s["names"][1], s["names"][2]
-            lines.append("{%s,{%s}%s}," % (lua_str(alliance), ",".join(step_lua(st) for st in s["steps"]),
-                                           "," + lua_str(horde) if horde != alliance else ""))
+            extra = ("," + lua_str(horde)) if horde != alliance else ""
+            # Step links, only for storylines that branch or merge (otherwise each step follows the last).
+            parents = s["parents"]
+            linear = all(p == ([i] if i else []) for i, p in enumerate(parents))
+            if not linear:
+                links = ",".join("0" if not p else str(p[0]) if len(p) == 1 else "{" + ",".join(map(str, p)) + "}"
+                                 for p in parents)
+                extra = (extra or ",nil") + ",{" + links + "}"
+            lines.append("{%s,{%s}%s}," % (lua_str(alliance), ",".join(step_lua(st) for st in s["steps"]), extra))
         lines.append("},")
         side = sorted(z["side"], key=lambda st: (kept[st[0]]["level"], st[0]))
         lines.append("side={%s}," % ",".join(step_lua(st) for st in side))

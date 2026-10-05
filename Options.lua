@@ -373,6 +373,8 @@ local function Build()
         .. "this many levels above you. Ones you have started are always shown.", 0, 20, 1, function(v)
             return v == 0 and "Off" or ("+" .. v)
         end)
+    Check(col, "treeView", "Show storyline branches as a tree", "When a quest opens several lines, list each line "
+        .. "indented under it. Off: one flat list.")
     Choice(col, "sortBy", "Sort storylines by", "Order of the storylines in a zone. Progress lists the ones you are "
         .. "on first, then new ones, then finished ones.",
         { { "level", "Level" }, { "name", "Name" }, { "progress", "Progress" } })

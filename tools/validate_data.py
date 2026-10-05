@@ -73,7 +73,7 @@ def main():
     for area, zone in zones.items():
         for story in zone.get("stories") or []:
             name, steps = story[0], story[1]
-            horde_name = story[2] if len(story) > 2 else name
+            horde_name = story[2] if len(story) > 2 and story[2] else name
             all_stories.append((area, zone["name"], name, steps, horde_name))
             for step in steps:
                 for qid in step_ids(step):

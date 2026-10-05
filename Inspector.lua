@@ -370,11 +370,17 @@ local function RenderStory(story)
 
     AddHeader("Quests")
     local index = 0
-    for _, step in ipairs(story.steps) do
+    local depth, start
+    if ns.db.treeView then
+        depth, start = ns:GetStoryTree(story)
+    end
+    for i, step in ipairs(story.steps) do
         local questID = ns:ResolveStep(step)
         if questID then
             index = index + 1
-            AddQuestLine(questID, index .. ". ")
+            -- Tree view: branches are indented, and a branch's first quest is marked.
+            local d = depth and depth[i] or 0
+            AddQuestLine(questID, ((start and start[i]) and "|cff909090>|r " or "") .. index .. ". ", 12 * d)
         end
     end
 end

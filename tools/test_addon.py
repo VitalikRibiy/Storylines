@@ -1042,6 +1042,133 @@ def main():
         return out""")
     check(modern == "120,60,false", "professions are read from the modern API too (%s)" % modern)
 
+    order = lua_do("""local ns = ...
+        local story = ns.storyByKey[1062]
+        local out = {}
+        for i = 1, 3 do out[#out + 1] = ns.StepIDs(story.steps[i])[1] end
+        return table.concat(out, ',')""")
+    check(order == "1062,1068,1063", "a one-quest side branch is listed right after the quest that unlocks it (%s)" % order)
+    tree = lua_do("""local ns = ...
+        __faction, __race, __class = 'Horde', 6, 1 ns:UpdatePlayerInfo()
+        local function show(story)
+            local depth, start = ns:GetStoryTree(story)
+            local out = {}
+            for i, step in ipairs(story.steps) do
+                if depth[i] then out[#out + 1] = (start[i] and '>' or '') .. depth[i] end
+            end
+            return table.concat(out, ' ')
+        end
+        local result = show(ns.storyByKey[1062])
+        -- printed for a look at other branching storylines
+        local samples = {}
+        for _, key in ipairs({ 1102, 7, 1066 }) do
+            local s = ns.storyByKey[key]
+            if s then
+                local depth, start = ns:GetStoryTree(s)
+                local lines = {}
+                for i, step in ipairs(s.steps) do
+                    local q = ns:ResolveStep(step)
+                    if q then lines[#lines + 1] = string.rep('  ', depth[i]) .. (start[i] and '+ ' or '') .. ns:GetQuestName(q) end
+                end
+                samples[#samples + 1] = s.name .. ': ' .. table.concat(lines, ' / ')
+            end
+        end
+        __faction, __race, __class = 'Alliance', 1, 1 ns:UpdatePlayerInfo()
+        return result .. '#' .. table.concat(samples, ' || ')""")
+    collapse = lua_do("""local ns = ...
+        -- The Elder Crone's line is one row you can open and close.
+        __faction, __race, __class = 'Horde', 6, 1 ns:UpdatePlayerInfo()
+        local function rows()
+            local out = {}
+            for _, item in ipairs(StorylinesFrame.storyList.items) do
+                if item.story == ns.storyByKey[1062] then
+                    if item.type == 'branch' then out[#out + 1] = 'B' .. item.depth .. (item.open and '-' or '+') .. item.count
+                    elseif item.type == 'step' then out[#out + 1] = item.questID .. '@' .. item.depth end
+                end
+            end
+            return table.concat(out, ' ')
+        end
+        ns:ShowUI(1638)
+        for _, row in ipairs(StorylinesFrame.storyList.rows) do
+            if row.item and row.item.type == 'story' and row.item.story.key == 1062 then
+                row:GetScript('OnClick')(row, 'LeftButton') break
+            end
+        end
+        local closed = rows()
+        local branch
+        for _, item in ipairs(StorylinesFrame.storyList.items) do if item.type == 'branch' then branch = item end end
+        local row = StorylinesFrame.storyList.rows[1]
+        row.item = branch
+        row:GetScript('OnClick')(row, 'LeftButton')
+        local opened = rows()
+        __faction, __race, __class = 'Alliance', 1, 1 ns:UpdatePlayerInfo()
+        return closed .. ' | ' .. opened""")
+    check(collapse == "1062@0 1068@1 B1+6 | 1062@0 1068@1 B1-6 1063@2 1064@2 1065@2 1066@2 1067@2 1086@2",
+          "a line of several quests is one row that opens to show its quests (%s)" % collapse)
+    tree_result, samples = tree.split("#", 1)
+    print("   " + samples)
+    check(tree_result == "0 >1 >1 1 1 1 1 1",
+          "a quest that opens two lines shows two indented branches (%s)" % tree_result)
+
+    sweep = lua_do("""local ns = ...
+        -- Every storyline, for characters of every faction, race and class: the tree must show each
+        -- quest once (all lines open) in the storyline's order, number them 1..n, and closed lines
+        -- must hide exactly their own quests.
+        local chars = {}
+        for _, race in ipairs({ 1, 3, 4, 7 }) do for _, cls in ipairs({ 1, 2, 3, 4, 5, 8, 9, 11 }) do
+            chars[#chars + 1] = { 'Alliance', race, cls } end end
+        for _, race in ipairs({ 2, 5, 6, 8 }) do for _, cls in ipairs({ 1, 3, 4, 5, 7, 8, 9, 11 }) do
+            chars[#chars + 1] = { 'Horde', race, cls } end end
+        local problems, views, withLines, deepest = {}, 0, {}, 0
+        ns.db.showAllProfessions = true
+        for _, c in ipairs(chars) do
+            __faction, __race, __class = c[1], c[2], c[3]
+            ns:UpdatePlayerInfo()
+            for key, story in pairs(ns.storyByKey) do
+                local expected = {}
+                for _, step in ipairs(story.steps) do
+                    local q = ns:ResolveStep(step)
+                    if q then expected[#expected + 1] = q end
+                end
+                if #expected > 0 then
+                    views = views + 1
+                    local who = story.name .. ' (' .. c[1] .. ' race ' .. c[2] .. ' class ' .. c[3] .. ')'
+                    local open, closed = {}, {}
+                    ns.AddStorySteps(open, story, true)
+                    ns.AddStorySteps(closed, story)
+                    local shown = {}
+                    for _, it in ipairs(open) do
+                        if it.type == 'step' then
+                            shown[#shown + 1] = it
+                            deepest = math.max(deepest, it.depth)
+                        else
+                            withLines[key] = true
+                        end
+                    end
+                    local ok = #shown == #expected
+                    for i, it in ipairs(shown) do
+                        ok = ok and it.questID == expected[i] and it.index == i
+                    end
+                    if not ok then problems[#problems + 1] = who .. ': open tree differs' end
+                    local visible, hidden = 0, 0
+                    for _, it in ipairs(closed) do
+                        if it.type == 'step' then visible = visible + 1
+                        elseif not it.open then hidden = hidden + it.count end
+                    end
+                    if visible + hidden ~= #expected then problems[#problems + 1] = who .. ': closed tree loses quests' end
+                end
+            end
+        end
+        ns.db.showAllProfessions = false
+        __faction, __race, __class = 'Alliance', 1, 1 ns:UpdatePlayerInfo()
+        local count = 0 for _ in pairs(withLines) do count = count + 1 end
+        return #problems .. '#' .. views .. '#' .. count .. '#' .. deepest .. '#' .. table.concat(problems, '; ', 1, math.min(#problems, 5))""")
+    n_problems, views, with_lines, deepest, examples = sweep.split("#", 4)
+    print("   %s storyline views checked, %s storylines have lines to open and close, deepest indent %s" % (
+        views, with_lines, deepest))
+    check(n_problems == "0", "the tree shows every quest of every storyline once, for every character (%s)" % (
+        examples or "no problems"))
+
     print("Data sanity:")
     bad = lua_do("""local ns = ...
         local missing = 0

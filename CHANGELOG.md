@@ -2,6 +2,26 @@
 
 All notable changes to Storylines. The newest version is at the top.
 
+## [0.5.2] - Unreleased
+
+### Added
+- **Storyline branches as a tree.** When a quest opens several lines, each line is listed
+  indented under it with a guide line, in the storyline list and in the details panel. For
+  example, after **Goblin Invaders** you see **Shredding Machines** and **The Elder Crone**'s
+  chain as two separate branches.
+  - A line of several quests is **one row you can open and close** ("The Elder Crone ... The
+    Flying Machine Airport (6 quests) 2/6"). The line you are on starts open, the others closed.
+  - Where lines join again, the list steps back out. Lines that aren't for your faction or class
+    don't count.
+  - Turn it off in the options ("Show storyline branches as a tree") for a flat list.
+
+### Fixed
+- **Short side quests are listed next to the quest that unlocks them**, not at the end of the
+  storyline. For example, **Shredding Machines** now comes right after **Goblin Invaders** in
+  "The Flying Machine Airport" (Thunder Bluff), before the long Elder Crone chain. 19 storylines
+  are affected, e.g. Battle of Hillsbrad, Raene's Cleansing, Northshire Valley and The Fate of
+  Zephras.
+
 ## [0.5.1] - 2026-10-05
 
 ### Added

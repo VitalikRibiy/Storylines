@@ -26,6 +26,7 @@ local defaults = {
     sortBy = "level",        -- "level" | "name" | "progress"
     hideFinishedZones = false,
     showQuestIDs = false,
+    treeView = true,         -- show where a storyline branches into separate lines
     showAllProfessions = false, -- list professions this character hasn't learned too
     -- Window (size and position are stored as db.size / db.position once changed)
     scale = 1,
@@ -112,8 +113,9 @@ function ns:BuildIndex()
         zone.id = areaID
         for i, raw in ipairs(zone.stories) do
             -- raw[3] is the name Horde players see when it differs (a storyline shared by both factions).
+            -- raw[4] links the steps of a branching storyline (each step's prerequisite steps).
             local story = { name = raw[1], nameAlliance = raw[1], nameHorde = raw[3] or raw[1],
-                            steps = raw[2], zone = areaID, homeZone = areaID, classZones = {} }
+                            steps = raw[2], links = raw[4], zone = areaID, homeZone = areaID, classZones = {} }
             local key
             for _, step in ipairs(story.steps) do
                 for _, questID in ipairs(stepIDs(step)) do
@@ -393,6 +395,74 @@ function ns:ResolveStep(step)
         end
     end
     return shown, state
+end
+
+--- How a storyline branches, for the tree view. Only the steps this character sees count: a hidden
+-- step (another class's quest) is skipped over to its own prerequisites.
+-- @return depth[stepIndex] (0 = not inside a branch), start[stepIndex] (true where a branch begins)
+function ns:GetStoryTree(story)
+    local links, steps = story.links, story.steps
+    local visible = {}
+    for i, step in ipairs(steps) do
+        visible[i] = self:ResolveStep(step) ~= nil
+    end
+    local function linkedSteps(i)
+        local link = links and links[i]
+        if link == nil then
+            link = i - 1 -- linear storyline: each step follows the one before
+        end
+        if type(link) == "table" then
+            return link
+        end
+        return link > 0 and { link } or {}
+    end
+    local function visibleParents(i, out, seen)
+        for _, j in ipairs(linkedSteps(i)) do
+            if not seen[j] then
+                seen[j] = true
+                if visible[j] then
+                    out[#out + 1] = j
+                else
+                    visibleParents(j, out, seen)
+                end
+            end
+        end
+        return out
+    end
+    local parents, children = {}, {}
+    for i in ipairs(steps) do
+        if visible[i] then
+            parents[i] = visibleParents(i, {}, {})
+            for _, j in ipairs(parents[i]) do
+                children[j] = (children[j] or 0) + 1
+            end
+        end
+    end
+    local depth, start, rootSeen = {}, {}, false
+    for i in ipairs(steps) do
+        if visible[i] then
+            local p = parents[i]
+            if #p == 0 then
+                -- A storyline can have several starting quests; each later one starts its own line.
+                depth[i], start[i], rootSeen = 0, rootSeen, true
+            elseif #p == 1 then
+                local j = p[1]
+                if children[j] > 1 then
+                    depth[i], start[i] = math.min(depth[j] + 1, 4), true
+                else
+                    depth[i] = depth[j]
+                end
+            else
+                -- Branches join again: back out to the level they split from.
+                local low = math.huge
+                for _, j in ipairs(p) do
+                    low = math.min(low, depth[j])
+                end
+                depth[i] = math.max(0, low - 1)
+            end
+        end
+    end
+    return depth, start
 end
 
 --- Progress of a story for the current character.

@@ -20,7 +20,9 @@ zone has, which ones you skipped completely, and which quest in a chain you need
   result to open it.
 - **Storyline list** for the selected zone, with a progress bar, level range, `done/total` count
   and a check mark plus strike-through for finished storylines.
-- **Click a storyline** to see its quests in order, one branch at a time. Each quest shows
+- **Click a storyline** to see its quests in order, one branch at a time. When a quest opens
+  several lines, they are shown as a tree: each line indented under the quest that opens it, and a
+  line of several quests is one row you can open and close. Each quest shows
   whether it's completed, in your quest log, ready to turn in, **available** to pick up now,
   waiting for a level, or still locked behind earlier quests. This uses each quest's real
   requirements, the same way the game decides.

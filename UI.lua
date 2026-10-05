@@ -5,6 +5,7 @@ local ROW_HEIGHT = BASE_ROW_HEIGHT -- changes with the "Text size" setting
 local ZONE_LIST_WIDTH = 230
 local FRAME_WIDTH, FRAME_HEIGHT = 780, 540
 local MIN_WIDTH, MIN_HEIGHT = 700, 400
+local BRANCH_INDENT = 14 -- tree view: indent per branch level
 
 local ICON_DONE = "Interface\\RaidFrame\\ReadyCheck-Ready"
 local ICON_ACTIVE = "Interface\\GossipFrame\\ActiveQuestIcon"
@@ -23,6 +24,7 @@ local COLOR_LOCKED = { 0.75, 0.75, 0.75 }
 
 local frame
 local expandedStories = {}
+local branchOpen = {} -- tree view: [storyKey .. ":" .. first step] = true/false once clicked
 local sideCollapsed = false
 
 ---------------------------------------------------------------------------
@@ -224,6 +226,14 @@ local function InitRow(row)
     row.text:SetJustifyH("LEFT")
     row.text:SetWordWrap(false)
 
+    -- Tree view guide: a vertical line under the step a branch comes from, and a tick to the step.
+    row.guide = row:CreateTexture(nil, "ARTWORK")
+    row.guide:SetColorTexture(0.65, 0.65, 0.65, 0.6)
+    row.guide:Hide()
+    row.tick = row:CreateTexture(nil, "ARTWORK")
+    row.tick:SetColorTexture(0.65, 0.65, 0.65, 0.6)
+    row.tick:Hide()
+
     row.strike = row:CreateTexture(nil, "OVERLAY")
     row.strike:SetHeight(1)
     row.strike:SetColorTexture(0.75, 0.75, 0.75, 0.9)
@@ -261,6 +271,24 @@ local function SetRow(row, opts)
         row.strike:Hide()
     end
     row.selected:SetShown(opts.selected or false)
+    if opts.guideX then
+        row.guide:ClearAllPoints()
+        row.guide:SetPoint("TOPLEFT", opts.guideX, 0)
+        row.guide:SetPoint("BOTTOMLEFT", opts.guideX, 0)
+        row.guide:SetWidth(1)
+        row.guide:Show()
+        if opts.tick then
+            row.tick:ClearAllPoints()
+            row.tick:SetPoint("LEFT", opts.guideX, 0)
+            row.tick:SetSize(6, 1)
+            row.tick:Show()
+        else
+            row.tick:Hide()
+        end
+    else
+        row.guide:Hide()
+        row.tick:Hide()
+    end
 end
 
 ---------------------------------------------------------------------------
@@ -406,6 +434,106 @@ local function HiddenByLevel(low, high)
     return db.maxLevelsAbove > 0 and low - (UnitLevel("player") or 1) > db.maxLevelsAbove
 end
 
+--- Adds a storyline's quests to the list. In the tree view, every line that branches off (two
+-- quests or more) is one row you can open and close; its quests are indented under it.
+-- openAll (tests) opens every line.
+local function AddStorySteps(items, story, openAll)
+    local steps = story.steps
+    local resolved, index = {}, 0
+    for i, step in ipairs(steps) do
+        local questID, state = ns:ResolveStep(step)
+        if questID then
+            index = index + 1
+            resolved[i] = { questID = questID, state = state, index = index, step = step }
+        end
+    end
+    local function addStep(i, depth, branchStart)
+        local r = resolved[i]
+        table.insert(items, { type = "step", questID = r.questID, state = r.state, index = r.index, step = r.step,
+            story = story, depth = depth, branchStart = branchStart })
+    end
+    if not ns.db.treeView then
+        for i = 1, #steps do
+            if resolved[i] then
+                addStep(i, 0, false)
+            end
+        end
+        return
+    end
+    local depth, start = ns:GetStoryTree(story)
+    -- A branch runs from its first step until a step outside it (lower depth) or its next sibling.
+    local function branchEnd(i)
+        local last = i
+        for k = i + 1, #steps do
+            if resolved[k] then
+                if depth[k] < depth[i] or (depth[k] == depth[i] and start[k]) then
+                    break
+                end
+                last = k
+            end
+        end
+        return last
+    end
+    local addRange
+    local function addBranch(from, to, level)
+        local count, done, started = 0, 0, false
+        local low, high
+        for k = from, to do
+            local r = resolved[k]
+            if r then
+                count = count + 1
+                done = done + (r.state == ns.STATE_DONE and 1 or 0)
+                started = started or r.state ~= ns.STATE_TODO
+                local lvl = ns:GetQuestLevel(r.questID)
+                if lvl > 0 then
+                    low, high = math.min(low or lvl, lvl), math.max(high or lvl, lvl)
+                end
+            end
+        end
+        if count == 1 then
+            addStep(from, level, true)
+            return
+        end
+        local key = story.key .. ":" .. from
+        local open = openAll or branchOpen[key]
+        if open == nil then
+            open = started and done < count -- open the line you are on
+        end
+        local lastQuest
+        for k = to, from, -1 do
+            if resolved[k] then
+                lastQuest = resolved[k].questID
+                break
+            end
+        end
+        table.insert(items, { type = "branch", key = key, story = story, depth = level, open = open,
+            count = count, done = done, started = started, low = low, high = high,
+            firstQuest = resolved[from].questID, lastQuest = lastQuest, from = from, to = to })
+        if open then
+            addStep(from, level + 1, false)
+            addRange(from + 1, to, level + 1)
+        end
+    end
+    addRange = function(from, to, level)
+        local i = from
+        while i <= to do
+            if resolved[i] and start[i] then
+                local last = branchEnd(i)
+                addBranch(i, last, level + 1)
+                i = last + 1
+            else
+                if resolved[i] then
+                    addStep(i, level, false)
+                end
+                i = i + 1
+            end
+        end
+    end
+    addRange(1, #steps, 0)
+end
+
+ns.AddStorySteps = AddStorySteps -- for the tests
+
 --- Orders a zone's storylines by the "Sort storylines by" setting (they come in level order).
 local function SortStories(stories)
     local by = ns.db.sortBy
@@ -456,15 +584,7 @@ local function BuildStoryItems(areaID)
                 elsewhere = story.zone ~= areaID and story.zone or nil,
                 repProblems = not complete and ns:GetStoryReputationProblems(story) or nil })
             if expanded then
-                local index = 0
-                for _, step in ipairs(story.steps) do
-                    local questID, state = ns:ResolveStep(step)
-                    if questID then
-                        index = index + 1
-                        table.insert(items, { type = "step", questID = questID, state = state, index = index,
-                            step = step, story = story })
-                    end
-                end
+                AddStorySteps(items, story)
             end
         end
     end
@@ -689,8 +809,13 @@ local function UpdateStoryRow(row, item)
         elseif availability == "available" and item.type == "step" then
             right = "|cffffd100available|r"
         end
+        -- Tree view: steps inside a branch are indented, with a guide line from the step it comes from.
+        local depth = item.depth or 0
+        local indent = item.type == "step" and (18 + BRANCH_INDENT * depth) or 6
         SetRow(row, {
-            indent = item.type == "step" and 18 or 6,
+            indent = indent,
+            guideX = depth > 0 and (4 + indent - BRANCH_INDENT + 7) or nil,
+            tick = item.branchStart,
             icon = ignored and ICON_IGNORED or icon,
             desaturate = desat and not ignored,
             text = ns:FormatQuestLine(item.questID, item.type == "step" and (item.index .. ". ") or nil, item.state)
@@ -709,6 +834,32 @@ local function UpdateStoryRow(row, item)
             font = "GameFontNormal",
             color = COLOR_GOLD,
             right = progressColor(item.done, item.total) .. item.done .. "/" .. item.total .. "|r",
+        })
+    elseif item.type == "branch" then
+        local depth = item.depth
+        local indent = 18 + BRANCH_INDENT * depth
+        local icon, desat = ICON_AVAILABLE, true
+        if item.done == item.count then
+            icon, desat = ICON_DONE, false
+        elseif item.started then
+            icon, desat = ICON_WAITING, false
+        end
+        local levels = ""
+        if item.low then
+            levels = "|cff909090Lvl|r " .. (item.low == item.high and ns:ColorLevel(item.low)
+                or (ns:ColorLevel(item.low) .. "|cff909090-|r" .. ns:ColorLevel(item.high))) .. "   "
+        end
+        SetRow(row, {
+            indent = indent,
+            guideX = depth > 0 and (4 + indent - BRANCH_INDENT + 7) or nil,
+            tick = true,
+            icon = icon,
+            desaturate = desat,
+            text = (item.open and "- " or "+ ") .. ns:GetQuestName(item.firstQuest) .. " |cff909090...|r "
+                .. ns:GetQuestName(item.lastQuest) .. " |cff909090(" .. item.count .. " quests)|r",
+            font = "GameFontHighlightSmall",
+            color = item.done == item.count and COLOR_DONE or { 1, 0.9, 0.6 },
+            right = levels .. progressColor(item.done, item.count) .. item.done .. "/" .. item.count .. "|r",
         })
     elseif item.type == "zoneResult" then
         local zone = ns.Zones[item.areaID]
@@ -808,6 +959,9 @@ local function OnStoryRowClick(row, button)
     elseif item.type == "sideHeader" then
         sideCollapsed = not sideCollapsed
         ns:RefreshUI(true)
+    elseif item.type == "branch" then
+        branchOpen[item.key] = not item.open
+        ns:RefreshUI(true)
     end
 end
 
@@ -816,7 +970,21 @@ local function OnStoryRowEnter(row)
     if not item then
         return
     end
-    if item.type == "story" then
+    if item.type == "branch" then
+        GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+        GameTooltip:SetText(("A line of %d quests"):format(item.count), 1, 0.82, 0)
+        GameTooltip:AddLine(("%d of %d completed"):format(item.done, item.count), 1, 1, 1)
+        for k = item.from, item.to do
+            local questID, state = ns:ResolveStep(item.story.steps[k])
+            if questID then
+                local done = state == ns.STATE_DONE
+                GameTooltip:AddLine((done and "|cff808080" or "|cffffffff") .. ns:GetQuestName(questID) .. "|r", 1, 1, 1)
+            end
+        end
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine(item.open and "Click to close this line." or "Click to show its quests.", 0.6, 0.6, 0.6)
+        GameTooltip:Show()
+    elseif item.type == "story" then
         GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
         GameTooltip:SetText(item.story.name, 1, 0.82, 0)
         GameTooltip:AddLine(("%d of %d quests completed"):format(item.done, item.total), 1, 1, 1)
