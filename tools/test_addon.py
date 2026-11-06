@@ -482,7 +482,7 @@ def main():
         ns.db.hideCompleted = false
         ns:ShowUI(10)
         for _, row in ipairs(StorylinesFrame.storyList.rows) do
-            if row:IsShown() and row.item and row.item.type == 'story' and row.item.story.name == 'Morbent Fel' then
+            if row:IsShown() and row.item and row.item.type == 'story' and row.item.story.name == 'Lightforge Iron' then
                 row:GetScript('OnClick')(row, 'LeftButton') break
             end
         end""")
@@ -749,7 +749,7 @@ def main():
         for _, item in ipairs(StorylinesFrame.zoneList.items) do
             if item.type == 'zone' and ns.Zones[item.areaID].group == 3 then
                 names[#names + 1] = item.name
-                if item.name == 'City of Dalaran' then empty = item end
+                if item.name == 'Blackmaw Hold' then empty = item end
             end
         end
         local text = 'not shown'

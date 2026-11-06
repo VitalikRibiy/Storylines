@@ -98,6 +98,7 @@ BATTLEGROUND_AREAS = {2597, 3277, 3358}
 CLASSIC_DUNGEONS = {2437, 718, 1581, 209, 719, 717, 721, 491, 796, 722, 1337, 1176, 2100, 1477, 1584, 1583,
                     2557, 2057, 2017, 2717, 2159, 2677, 1977, 3429, 3428, 3456}
 NOT_DUNGEONS = {2257}  # Deeprun Tram: listed with the Eastern Kingdoms zones
+CRAFTING_AREA = 16941  # Crafting Orders / Craftsman's Writ quests: no real zone, not storyline content
 
 # Placeholder markers in internal quest names. Case-sensitive on purpose: real quests such as
 # "Test of Faith" or "Poor Old Blanchy" must not match. (Questie's blacklist handles the rest.)
@@ -413,6 +414,8 @@ def build(offline, questiedb=None):
             reason = "repeatable"
         elif skill_id and skill_id not in PROFESSIONS:
             reason = "other skill quest"
+        elif zone == CRAFTING_AREA:
+            reason = "crafting order"
         else:
             classes = (q.get(CLASSES) or inferred_classes(qid, q) or ALL_CLASSES) & ALL_CLASSES
             classes = classes if classes != ALL_CLASSES and class_bits(classes) else 0

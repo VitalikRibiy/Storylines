@@ -2,6 +2,25 @@
 
 All notable changes to Storylines. The newest version is at the top.
 
+## [1.0.0] - Unreleased
+
+### Changed
+- **Quest data updated for WoW Forever's official release.** Regenerated from QuestieDB's current
+  Forever database (previously the beta data).
+  - **The Hall of Thanes, Ruins of Lordaeron, City of Dalaran and Excavation Site: Wetlands** now
+    have their quests, and are no longer listed as "no quests yet". 5 new dungeons (The Drowned
+    City, Krol'dok Stronghold, Alcaz Prison, Blackmaw Hold, Shaper's Terrace) still have none in
+    QuestieDB and will fill in with a later update.
+  - **Lightforge Iron and Morbent Fel** (Duskwood) are now two storylines instead of one, matching
+    a correction in the official data; **Westfall's Morbent Fel line also gained an alternate
+    starting quest.**
+  - The data now has 529 storylines and 1,096 side quests across 50 zones, up from 489 and 1,078
+    across 48 zones.
+
+### Fixed
+- **Crafting order writs** ("Craftsman's Writ: ...", new in the official release) no longer show
+  up as unplaced side quests; they aren't tied to any real zone.
+
 ## [0.5.2] - 2026-10-05
 
 ### Added
