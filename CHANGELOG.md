@@ -2,7 +2,7 @@
 
 All notable changes to Storylines. The newest version is at the top.
 
-## [1.0.0] - Unreleased
+## [1.0.0] - 2026-11-06
 
 ### Changed
 - **Quest data updated for WoW Forever's official release.** Regenerated from QuestieDB's current
