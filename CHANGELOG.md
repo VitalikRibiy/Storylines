@@ -2,7 +2,7 @@
 
 All notable changes to Storylines. The newest version is at the top.
 
-## [Unreleased]
+## [1.0.1] - Unreleased
 
 ### Fixed
 - **Breadcrumb quests with their own real prerequisite were wrongly left as side quests.** A
@@ -14,6 +14,12 @@ All notable changes to Storylines. The newest version is at the top.
   official release like 1.0.0's changelog said — that was this same bug. They're one 15-step
   "Morbent Fel" storyline again. The fix applies everywhere this pattern occurs, not just
   Wetlands: the data now has 533 storylines and 1,051 side quests, up from 529 and 1,096.
+- **5 more quest chains linked**, found by checking which quests are genuinely needed to reach
+  another even though QuestieDB has no formal requirement for it yet: Excavation Site: Wetlands'
+  Dragonmaw Rumors → Open the Maw and Elder Knowledge → Earthen Echo (the pairs from the original
+  report), plus The Crown of Will (Hillsbrad/Alterac), Trollbane → Sigil of Strom (the Uldaman key
+  sigils), and Blackfathom Deeps' In Search of Thaelrid → Blackfathom Villainy. The data now has
+  536 storylines and 1,043 side quests.
 
 ## [1.0.0] - 2026-11-06
 
