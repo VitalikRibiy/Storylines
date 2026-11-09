@@ -490,13 +490,16 @@ def build(offline, questiedb=None):
     for qid, k in kept.items():
         q = k["raw"]
         uf.find(qid)
-        if qid in lead_ins:
-            continue  # breadcrumbs only join their alternatives (below)
+        # A breadcrumb's own real requirements still apply (e.g. Report to Captain Stoutfist is a
+        # breadcrumb for War Banners, but still needs The Algaz Gauntlet first); only its role as a
+        # requirement for what follows it is skipped, below.
         for p in ids(q.get(PRE_SINGLE)) + ids(q.get(PRE_GROUP)):
             if p in kept and p != qid:
                 prereqs[qid].add(p)  # a real requirement, even if p is someone else's breadcrumb
         if q.get(PARENT) in kept and q[PARENT] not in lead_ins:
             prereqs[qid].add(q[PARENT])
+        if qid in lead_ins:
+            continue  # breadcrumbs only join their alternatives (below)
         for c in ids(q.get(CHILDREN)):
             if c in kept and c not in lead_ins:
                 prereqs[c].add(qid)

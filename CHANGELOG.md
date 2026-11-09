@@ -2,6 +2,19 @@
 
 All notable changes to Storylines. The newest version is at the top.
 
+## [Unreleased]
+
+### Fixed
+- **Breadcrumb quests with their own real prerequisite were wrongly left as side quests.** A
+  quest that only *optionally* leads into another (a "breadcrumb") was also losing its *own*
+  requirement in the process, so quests genuinely gated behind an earlier one showed up as
+  unrelated side quests instead of continuing that storyline. For example, Wetlands' "Report to
+  Captain Stoutfist" (which needs "The Algaz Gauntlet" first) is a storyline again. This also
+  means **Lightforge Iron and Morbent Fel** (Duskwood) were never actually split by WoW Forever's
+  official release like 1.0.0's changelog said — that was this same bug. They're one 15-step
+  "Morbent Fel" storyline again. The fix applies everywhere this pattern occurs, not just
+  Wetlands: the data now has 533 storylines and 1,051 side quests, up from 529 and 1,096.
+
 ## [1.0.0] - 2026-11-06
 
 ### Changed

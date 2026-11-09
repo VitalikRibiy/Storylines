@@ -482,7 +482,7 @@ def main():
         ns.db.hideCompleted = false
         ns:ShowUI(10)
         for _, row in ipairs(StorylinesFrame.storyList.rows) do
-            if row:IsShown() and row.item and row.item.type == 'story' and row.item.story.name == 'Lightforge Iron' then
+            if row:IsShown() and row.item and row.item.type == 'story' and row.item.story.name == 'Morbent Fel' then
                 row:GetScript('OnClick')(row, 'LeftButton') break
             end
         end""")
