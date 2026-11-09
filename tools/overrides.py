@@ -43,8 +43,17 @@ EXTRA_DUNGEONS = {
 ZONE_NAMES = {
 }
 
-# Extra (before, after) quest links that merge two chains into one storyline.
+# Extra (before, after) quest links that merge two chains into one storyline. QuestieDB marks
+# each "before" quest here as a breadcrumb for its "after" quest (so the automatic linking skips
+# it, by design, since a breadcrumb's target doesn't list it as a real requirement) - but in each
+# case here it's actually how the quest is obtained at all, confirmed against the ForeverDungeonScout
+# dungeon guide addon's hand-tested quest order.
 LINK_QUESTS = [
+    (495, 518),      # The Crown of Will (Melisara, Tarren Mill): same quest name, 3-step kill chain
+    (638, 639),       # Trollbane -> Sigil of Strom (the Uldaman key sigils, Stromgarde/Hammerfall)
+    (1198, 1200),     # In Search of Thaelrid -> Blackfathom Villainy (QuestieDB flags hasPrereq=true)
+    (95663, 95682),   # Dragonmaw Rumors -> Open the Maw (Excavation Site: Wetlands, Horde)
+    (95664, 98823),   # Elder Knowledge -> Earthen Echo (Excavation Site: Wetlands, Horde)
 ]
 
 # Quests to leave out completely.
