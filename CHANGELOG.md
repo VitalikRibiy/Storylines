@@ -2,7 +2,7 @@
 
 All notable changes to Storylines. The newest version is at the top.
 
-## [1.0.1] - Unreleased
+## [1.0.1] - 2026-11-09
 
 ### Fixed
 - **Breadcrumb quests with their own real prerequisite were wrongly left as side quests.** A
