@@ -89,6 +89,10 @@ LINK_QUESTS = [
     (94501, 94502),   # Bring the Vial of Purest Water -> Drink the Water Sapta
     (94502, 94503),   # Drink the Water Sapta -> Speak to the Minor Manifestation of Water
     (94503, 94505),   # Speak to the Minor Manifestation of Water -> Bring the Shard of Water
+    # Confirmed in-game: both quests are started AND finished by the same NPC (Maseara
+    # Autumnmoon), with no QuestieDB chain data at all, so the earlier handoff-based scan
+    # couldn't tell this apart from two independent quests given by the same NPC.
+    (98417, 98418),   # Vengeful Trail -> Shared Fury (Ashenvale, Forest Song)
 ]
 
 # Quests to leave out completely.
