@@ -54,6 +54,15 @@ LINK_QUESTS = [
     (1198, 1200),     # In Search of Thaelrid -> Blackfathom Villainy (QuestieDB flags hasPrereq=true)
     (95663, 95682),   # Dragonmaw Rumors -> Open the Maw (Excavation Site: Wetlands, Horde)
     (95664, 98823),   # Elder Knowledge -> Earthen Echo (Excavation Site: Wetlands, Horde)
+    # Paladin's "Orb of Althalaxx" chain (new to WoW Forever): QuestieDB has no prereq data for any
+    # of these at all, but each quest's turn-in NPC/object is the next one's quest giver, confirming
+    # the order: A Strange Artifact -> Advice From Stormwind -> A Second Opinion -> Earning Your
+    # Salt -> It Must Be Destroyed -> Return to Delgren.
+    (78088, 78089),
+    (78089, 78090),
+    (78090, 78091),
+    (78091, 78092),
+    (78092, 78093),
 ]
 
 # Quests to leave out completely.
