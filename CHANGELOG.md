@@ -2,7 +2,7 @@
 
 All notable changes to Storylines. The newest version is at the top.
 
-## [1.0.2] - Unreleased
+## [1.0.2] - 2026-11-11
 
 ### Fixed
 - **A quest requiring the other faction's version of itself could never be completed.**
