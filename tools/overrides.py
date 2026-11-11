@@ -31,12 +31,14 @@ ZONE_REMAP = {
 # real AreaID once QuestieDB knows the dungeon (so its quests are filed there).
 # The Hall of Thanes, Ruins of Lordaeron, Excavation Site: Wetlands and City of Dalaran got real
 # AreaIDs with the official WoW Forever release; QuestieDB's own dungeon table lists them now.
+# Shaper's Terrace has quests under a real AreaID (16985) too, but isn't in QuestieDB's own
+# dungeon table yet, so it stays here with that AreaID instead of a placeholder.
 EXTRA_DUNGEONS = {
     200003: ("The Drowned City", 33),             # levels 35-40, Stranglethorn Vale
     200004: ("Krol'dok Stronghold", 16591),       # levels 40-45, Riverglades
     200005: ("Alcaz Prison", 15),                 # levels 48-53, Alcaz Island, Dustwallow Marsh
     200006: ("Blackmaw Hold", 16),                # levels 55-60, Azshara
-    200007: ("Shaper's Terrace", 490),            # levels 58-60, Un'Goro Crater
+    16985: ("Shaper's Terrace", 490),             # levels 58-60, Un'Goro Crater
 }
 
 # AreaID -> display name for zones whose name is missing from the source data.
@@ -63,6 +65,30 @@ LINK_QUESTS = [
     (78090, 78091),
     (78091, 78092),
     (78092, 78093),
+    # Found by scanning every quest with no chain data at all for one whose turn-in NPC/object is
+    # another such quest's own giver (and that NPC/object gives out no other quest), then checking
+    # each candidate's objective text and surroundings by hand before trusting it.
+    (79970, 81762),   # Aeonas the Vindicated -> Some Good News (Paladin, Cathedral of Light)
+    (81762, 81764),   # Some Good News -> The Mysterious Merchant (Paladin)
+    (81764, 81765),   # The Mysterious Merchant -> Elrick, Paladin of the Silver Hand
+    (91859, 91860),   # A Curious Pair -> A Grim Fate (Paladin, the Earthen Ring travelers)
+    (91860, 91861),   # A Grim Fate -> Into Fenris Keep (Paladin)
+    (87318, 88757),   # Hearts of the Lost -> Accessories of the Lost (Wetlands, "Essene Villard")
+    (88757, 88758),   # Accessories of the Lost -> Sentiments of the Lost (Wetlands)
+    (94618, 94992),   # Wheeler's Fleeing Steeds -> Rescue Roundup (Riverglades)
+    (94912, 94914),   # Child of Nature -> Moonglade (Druid)
+    (95772, 95795),   # Songblade Search -> Fallen in the Fen (Excavation Site: Wetlands)
+    (96783, 96784),   # A Way In -> Master of Disguise (Rogue, Stromgarde Keep infiltration)
+    (96784, 96785),   # Master of Disguise -> Ain't No Telling (Rogue)
+    (96876, 2161),    # Ukor's Lost Pack -> A Peon's Burden (Durotar)
+    # The Shaman "Call of Water" chain: the three waterskins are parallel steps that all feed into
+    # the vial delivery, which continues in a straight line from there.
+    (94497, 94501),   # fill the Brown Waterskin -> Bring the Vial of Purest Water
+    (94499, 94501),   # fill the Red Waterskin -> Bring the Vial of Purest Water
+    (94500, 94501),   # fill the Blue Waterskin -> Bring the Vial of Purest Water
+    (94501, 94502),   # Bring the Vial of Purest Water -> Drink the Water Sapta
+    (94502, 94503),   # Drink the Water Sapta -> Speak to the Minor Manifestation of Water
+    (94503, 94505),   # Speak to the Minor Manifestation of Water -> Bring the Shard of Water
 ]
 
 # Quests to leave out completely.

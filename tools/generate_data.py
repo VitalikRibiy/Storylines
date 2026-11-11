@@ -487,6 +487,13 @@ def build(offline, questiedb=None):
                     lead_ins[e] = lead_ins[qid]
                     changed = True
 
+    def faction_compatible(a, b):
+        """False when a and b are each restricted to a different faction (so one could never
+        complete both - a sign the source data merged two faction-specific steps together, not a
+        real requirement)."""
+        fa, fb = faction_of(kept[a]["races"]), faction_of(kept[b]["races"])
+        return not fa or not fb or fa == fb
+
     for qid, k in kept.items():
         q = k["raw"]
         uf.find(qid)
@@ -494,14 +501,14 @@ def build(offline, questiedb=None):
         # breadcrumb for War Banners, but still needs The Algaz Gauntlet first); only its role as a
         # requirement for what follows it is skipped, below.
         for p in ids(q.get(PRE_SINGLE)) + ids(q.get(PRE_GROUP)):
-            if p in kept and p != qid:
+            if p in kept and p != qid and faction_compatible(qid, p):
                 prereqs[qid].add(p)  # a real requirement, even if p is someone else's breadcrumb
-        if q.get(PARENT) in kept and q[PARENT] not in lead_ins:
+        if q.get(PARENT) in kept and q[PARENT] not in lead_ins and faction_compatible(qid, q[PARENT]):
             prereqs[qid].add(q[PARENT])
         if qid in lead_ins:
             continue  # breadcrumbs only join their alternatives (below)
         for c in ids(q.get(CHILDREN)):
-            if c in kept and c not in lead_ins:
+            if c in kept and c not in lead_ins and faction_compatible(qid, c):
                 prereqs[c].add(qid)
 
     for qid in list(prereqs):

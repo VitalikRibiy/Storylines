@@ -2,6 +2,28 @@
 
 All notable changes to Storylines. The newest version is at the top.
 
+## [Unreleased]
+
+### Fixed
+- **A quest requiring the other faction's version of itself could never be completed.**
+  QuestieDB sometimes lists a faction-shared step's Alliance and Horde requirements together, so a
+  Horde quest could end up needing an Alliance-only quest first (or vice versa) - something no
+  character could ever do. Such requirements are now dropped instead of permanently locking the
+  quest.
+- **Linked the Paladin's "Orb of Althalaxx" chain** (A Strange Artifact → ... → Return to Delgren):
+  QuestieDB has no prerequisite data for it at all, but each quest's turn-in NPC is the next one's
+  giver.
+- **17 more quests linked into their storylines** by the same method - checking every quest with
+  no chain data for one whose turn-in NPC/object is uniquely another such quest's own giver, then
+  verifying each by hand: two more Paladin side-chains, a Shaman "Call of Water" chain, a Rogue
+  Stromgarde Keep infiltration, and others in Durotar, Riverglades and Wetlands.
+- **Shaper's Terrace** now has its quests (QuestieDB gave it a real AreaID, though it's not in
+  QuestieDB's own dungeon table yet). 4 of WoW Forever's new dungeons still have none.
+
+### Changed
+- **Updated to QuestieDB's latest data**, which merged in a large batch of new quests. The data
+  now has 546 storylines and 1,409 side quests across 51 zones, up from 537 and 1,037.
+
 ## [1.0.1] - 2026-11-09
 
 ### Fixed

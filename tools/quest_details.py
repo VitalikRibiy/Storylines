@@ -10,8 +10,26 @@ OUTPUT = os.path.join(ROOT, "Data", "QuestDetails.lua")
 
 # QuestieDB quest fields
 REQ_LEVEL, OBJECTIVES_TEXT, STARTED_BY, FINISHED_BY, REP_REWARD = 4, 8, 2, 3, 26
+RACES = 6
 PRE_GROUP, PRE_SINGLE = 12, 13
 REQ_MIN_REP, REQ_MAX_REP = 19, 20
+
+# Same race bitmasks as generate_data.py (duplicated to avoid a circular import).
+ALLIANCE_RACES = (1 << 0) | (1 << 2) | (1 << 3) | (1 << 6) | (1 << 32)
+HORDE_RACES = (1 << 1) | (1 << 4) | (1 << 5) | (1 << 7) | (1 << 33)
+
+
+def faction_of(races):
+    """0 = both factions, 1 = Alliance only, 2 = Horde only."""
+    races = races or 0
+    if races == 0:
+        return 0
+    a, h = races & ALLIANCE_RACES, races & HORDE_RACES
+    if a and not h:
+        return 1
+    if h and not a:
+        return 2
+    return 0
 # NPC fields
 NPC_NAME, NPC_SPAWNS, NPC_ZONE, NPC_SUBNAME = 1, 7, 9, 14
 # Object fields
@@ -157,8 +175,14 @@ def write(ctx, used):
         for item_id in item_ids:
             used_items[item_id] = items[item_id].get(ITEM_NAME)
         # Real requirements from the database (not the looser links used to group storylines).
-        pre_all = sorted({p for p in id_list(q.get(PRE_GROUP)) if p in used and p != qid})
-        pre_any = sorted({p for p in id_list(q.get(PRE_SINGLE)) if p in used and p != qid})
+        # A requirement restricted to the other faction can never be completed, so it's dropped
+        # rather than shown as a permanently locked quest (the source data sometimes merges two
+        # faction-specific steps' requirements together).
+        own_faction = faction_of(q.get(RACES))
+        def compatible(p):
+            return not own_faction or not faction_of(quests[p].get(RACES)) or faction_of(quests[p].get(RACES)) == own_faction
+        pre_all = sorted({p for p in id_list(q.get(PRE_GROUP)) if p in used and p != qid and compatible(p)})
+        pre_any = sorted({p for p in id_list(q.get(PRE_SINGLE)) if p in used and p != qid and compatible(p)})
         quest_xp = (xp.get(qid) or [0, 0])[1] or 0
         lines.append("[%d]={%d,%d,%s,%d,%d,%d,%d,%d,{%s},{%s},{%s},{%s},{%s},{%s}}," % (
             qid, q.get(REQ_LEVEL) or 0, tag_of(qid, q), lua_str(objectives), g_kind, g_id, e_kind, e_id, quest_xp,
