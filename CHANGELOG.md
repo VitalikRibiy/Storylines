@@ -2,7 +2,7 @@
 
 All notable changes to Storylines. The newest version is at the top.
 
-## [Unreleased]
+## [1.0.3] - Unreleased
 
 ### Fixed
 - **Linked 8 more quests into their storylines**: Vengeful Trail -> Shared Fury (Ashenvale,
