@@ -81,18 +81,21 @@ LINK_QUESTS = [
     (96783, 96784),   # A Way In -> Master of Disguise (Rogue, Stromgarde Keep infiltration)
     (96784, 96785),   # Master of Disguise -> Ain't No Telling (Rogue)
     (96876, 2161),    # Ukor's Lost Pack -> A Peon's Burden (Durotar)
-    # The Shaman "Call of Water" chain: the three waterskins are parallel steps that all feed into
-    # the vial delivery, which continues in a straight line from there.
-    (94497, 94501),   # fill the Brown Waterskin -> Bring the Vial of Purest Water
-    (94499, 94501),   # fill the Red Waterskin -> Bring the Vial of Purest Water
-    (94500, 94501),   # fill the Blue Waterskin -> Bring the Vial of Purest Water
-    (94501, 94502),   # Bring the Vial of Purest Water -> Drink the Water Sapta
-    (94502, 94503),   # Drink the Water Sapta -> Speak to the Minor Manifestation of Water
-    (94503, 94505),   # Speak to the Minor Manifestation of Water -> Bring the Shard of Water
+    # (The Shaman "Call of Water" chain we used to link by hand here is now chained in QuestieDB's
+    # own data - it also turned out to be one straight line, not three parallel waterskin fetches.)
     # Confirmed in-game: both quests are started AND finished by the same NPC (Maseara
     # Autumnmoon), with no QuestieDB chain data at all, so the earlier handoff-based scan
     # couldn't tell this apart from two independent quests given by the same NPC.
     (98417, 98418),   # Vengeful Trail -> Shared Fury (Ashenvale, Forest Song)
+    # Found by re-running the same NPC/object-handoff scan after a later QuestieDB update added a
+    # batch of new quests; each verified by hand the same way.
+    (89053, 89470),   # Your Final Reward -> Ill Tidings (Azshara)
+    (94857, 94861),   # If a Tree Falls, and No One Hears... -> Helping Hands (Riverglades)
+    (94887, 94892),   # Saving Marshal Ryan -> Dying Wish (Riverglades)
+    (95194, 95196),   # Our Man in Theramore -> Watch Yer Back (Dustwallow Marsh)
+    (95417, 95601),   # The Purple Ones -> The Purple Ones (Riverglades): same name, 2-step chain
+    (96438, 79939),   # Battle at the Mannoroc Coven -> The Broken Hammer (Paladin)
+    (96798, 96811),   # Into the Darkness -> Escaping the Shadows (Blasted Lands)
 ]
 
 # Quests to leave out completely.

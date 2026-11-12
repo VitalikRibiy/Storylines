@@ -137,7 +137,7 @@ dungeon, raid or battleground also gets that type.
    to shown in grey. Group totals count each storyline once.
 7. It names each storyline after its final quest, skipping generic names like "Return to …".
 
-The current data has **546 storylines and 1,409 side quests across 51 zones, 35 dungeons and
+The current data has **557 storylines and 1,382 side quests across 51 zones, 35 dungeons and
 raids, 3 battlegrounds, 9 classes and 12 professions**. 4 of WoW Forever's new dungeons have no quests in QuestieDB
 yet. They are listed already and fill in when the data is regenerated after QuestieDB adds them.
 

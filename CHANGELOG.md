@@ -2,6 +2,23 @@
 
 All notable changes to Storylines. The newest version is at the top.
 
+## [Unreleased]
+
+### Fixed
+- **Linked 8 more quests into their storylines**: Vengeful Trail -> Shared Fury (Ashenvale,
+  confirmed in-game after the earlier scan excluded it as ambiguous - the same NPC happens to both
+  give and take in both quests), and 7 more found by re-running the handoff scan against
+  QuestieDB's latest data: Your Final Reward -> Ill Tidings (Azshara), two pairs in Riverglades, a
+  pair in Dustwallow Marsh, a Paladin side-chain, and one in the Blasted Lands.
+- **Removed our hand-made Shaman "Call of Water" links** now that QuestieDB chains them natively -
+  and more completely: it also starts two quests earlier than we had it, and turned out to be one
+  straight line rather than three parallel waterskin fetches, which our own version had wrong.
+
+### Changed
+- **Updated to QuestieDB's latest data** (another batch of fixes and new quests, and much better
+  NPC/turn-in data: "no turn-in known" dropped from 327 to 109). The data now has 557 storylines
+  and 1,382 side quests, up from 546 and 1,409.
+
 ## [1.0.2] - 2026-11-11
 
 ### Fixed
