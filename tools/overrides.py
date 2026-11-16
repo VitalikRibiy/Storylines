@@ -45,57 +45,22 @@ EXTRA_DUNGEONS = {
 ZONE_NAMES = {
 }
 
-# Extra (before, after) quest links that merge two chains into one storyline. QuestieDB marks
-# each "before" quest here as a breadcrumb for its "after" quest (so the automatic linking skips
-# it, by design, since a breadcrumb's target doesn't list it as a real requirement) - but in each
-# case here it's actually how the quest is obtained at all, confirmed against the ForeverDungeonScout
-# dungeon guide addon's hand-tested quest order.
+# Extra (before, after) quest links that merge two chains into one storyline, for cases
+# QuestieDB has no prerequisite data for at all (confirmed by hand: the ForeverDungeonScout
+# dungeon guide addon's hand-tested order, matching turn-in NPCs/objects, or in-game testing).
+# QuestieDB keeps improving its own quest relation data - most of the links found this way end up
+# here only until QuestieDB adds the real data itself; check new entries against it before adding.
 LINK_QUESTS = [
     (495, 518),      # The Crown of Will (Melisara, Tarren Mill): same quest name, 3-step kill chain
     (638, 639),       # Trollbane -> Sigil of Strom (the Uldaman key sigils, Stromgarde/Hammerfall)
     (1198, 1200),     # In Search of Thaelrid -> Blackfathom Villainy (QuestieDB flags hasPrereq=true)
-    (95663, 95682),   # Dragonmaw Rumors -> Open the Maw (Excavation Site: Wetlands, Horde)
-    (95664, 98823),   # Elder Knowledge -> Earthen Echo (Excavation Site: Wetlands, Horde)
-    # Paladin's "Orb of Althalaxx" chain (new to WoW Forever): QuestieDB has no prereq data for any
-    # of these at all, but each quest's turn-in NPC/object is the next one's quest giver, confirming
-    # the order: A Strange Artifact -> Advice From Stormwind -> A Second Opinion -> Earning Your
-    # Salt -> It Must Be Destroyed -> Return to Delgren.
-    (78088, 78089),
-    (78089, 78090),
-    (78090, 78091),
-    (78091, 78092),
-    (78092, 78093),
-    # Found by scanning every quest with no chain data at all for one whose turn-in NPC/object is
-    # another such quest's own giver (and that NPC/object gives out no other quest), then checking
-    # each candidate's objective text and surroundings by hand before trusting it.
+    (78092, 78093),   # It Must Be Destroyed -> Return to Delgren (Paladin, "Orb of Althalaxx")
     (79970, 81762),   # Aeonas the Vindicated -> Some Good News (Paladin, Cathedral of Light)
     (81762, 81764),   # Some Good News -> The Mysterious Merchant (Paladin)
     (81764, 81765),   # The Mysterious Merchant -> Elrick, Paladin of the Silver Hand
-    (91859, 91860),   # A Curious Pair -> A Grim Fate (Paladin, the Earthen Ring travelers)
-    (91860, 91861),   # A Grim Fate -> Into Fenris Keep (Paladin)
-    (87318, 88757),   # Hearts of the Lost -> Accessories of the Lost (Wetlands, "Essene Villard")
-    (88757, 88758),   # Accessories of the Lost -> Sentiments of the Lost (Wetlands)
-    (94618, 94992),   # Wheeler's Fleeing Steeds -> Rescue Roundup (Riverglades)
     (94912, 94914),   # Child of Nature -> Moonglade (Druid)
-    (95772, 95795),   # Songblade Search -> Fallen in the Fen (Excavation Site: Wetlands)
-    (96783, 96784),   # A Way In -> Master of Disguise (Rogue, Stromgarde Keep infiltration)
-    (96784, 96785),   # Master of Disguise -> Ain't No Telling (Rogue)
     (96876, 2161),    # Ukor's Lost Pack -> A Peon's Burden (Durotar)
-    # (The Shaman "Call of Water" chain we used to link by hand here is now chained in QuestieDB's
-    # own data - it also turned out to be one straight line, not three parallel waterskin fetches.)
-    # Confirmed in-game: both quests are started AND finished by the same NPC (Maseara
-    # Autumnmoon), with no QuestieDB chain data at all, so the earlier handoff-based scan
-    # couldn't tell this apart from two independent quests given by the same NPC.
-    (98417, 98418),   # Vengeful Trail -> Shared Fury (Ashenvale, Forest Song)
-    # Found by re-running the same NPC/object-handoff scan after a later QuestieDB update added a
-    # batch of new quests; each verified by hand the same way.
-    (89053, 89470),   # Your Final Reward -> Ill Tidings (Azshara)
-    (94857, 94861),   # If a Tree Falls, and No One Hears... -> Helping Hands (Riverglades)
-    (94887, 94892),   # Saving Marshal Ryan -> Dying Wish (Riverglades)
-    (95194, 95196),   # Our Man in Theramore -> Watch Yer Back (Dustwallow Marsh)
-    (95417, 95601),   # The Purple Ones -> The Purple Ones (Riverglades): same name, 2-step chain
     (96438, 79939),   # Battle at the Mannoroc Coven -> The Broken Hammer (Paladin)
-    (96798, 96811),   # Into the Darkness -> Escaping the Shadows (Blasted Lands)
 ]
 
 # Quests to leave out completely.

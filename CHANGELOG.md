@@ -2,6 +2,16 @@
 
 All notable changes to Storylines. The newest version is at the top.
 
+## [Unreleased]
+
+### Changed
+- **Updated to QuestieDB's latest data.** It now uses community-submitted trace data to fill in
+  quest relations across the board, which picked up the vast majority of what we'd been linking
+  by hand (removed 20 now-redundant hand-made links, including the whole Paladin "Earthen Ring
+  travelers" chain, which turned out to be part of a much longer 12-step "Old Fire-Eye" storyline
+  upstream now links correctly on its own). The data now has 609 storylines and 1,028 side quests,
+  up from 557 and 1,382.
+
 ## [1.0.3] - 2026-11-13
 
 ### Fixed
