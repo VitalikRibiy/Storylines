@@ -11,6 +11,10 @@ All notable changes to Storylines. The newest version is at the top.
   lists a few quests you haven't picked up yet but could while you're there. Click any quest to
   inspect it and set a waypoint, same as everywhere else in the addon.
 
+### Changed
+- **Updated to QuestieDB's latest data.** Mostly coordinate and quest-giver fixes; one
+  unobtainable quest ("An Unfortunate End") was removed upstream.
+
 ## [1.0.4] - 2026-11-16
 
 ### Changed
