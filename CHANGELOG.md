@@ -2,7 +2,7 @@
 
 All notable changes to Storylines. The newest version is at the top.
 
-## [1.0.4] - Unreleased
+## [1.0.4] - 2026-11-16
 
 ### Changed
 - **Updated to QuestieDB's latest data.** It now uses community-submitted trace data to fill in
