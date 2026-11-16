@@ -728,6 +728,45 @@ local function BuildSearchItems(text)
     return items, #zones, #stories, #quests
 end
 
+--- Builds the "Quest Plan" item list from ns:BuildQuestPlan(): quests ready to turn in first,
+-- then each zone cluster (biggest first) with its quests and a few quests you could also pick up
+-- there. Reuses the existing "side" (log quests) and "step" (suggestions, numbered) row types.
+local function BuildPlanItems()
+    local plan = ns:BuildQuestPlan()
+    local items = {}
+    if plan.totalQuests == 0 then
+        items[#items + 1] = { type = "note", text = "Your quest log is empty." }
+        return items, plan
+    end
+    local function questRow(questID, state, elsewhere)
+        local list = ns.storiesByQuest[questID]
+        local story = list and list[1]
+        return { type = "side", questID = questID, state = state, story = story,
+            storyName = story and story.name or nil, elsewhere = elsewhere }
+    end
+    if #plan.ready > 0 then
+        items[#items + 1] = { type = "header", text = "Ready to turn in", count = #plan.ready }
+        for _, entry in ipairs(plan.ready) do
+            items[#items + 1] = questRow(entry.questID, ns.STATE_READY, entry.areaID)
+        end
+    end
+    for _, zone in ipairs(plan.zones) do
+        items[#items + 1] = { type = "spacer" }
+        items[#items + 1] = { type = "header", count = #zone.quests,
+            icon = (zone.areaID and zone.areaID == ns.currentArea) and ICON_HERE or nil, text = zone.name }
+        for _, q in ipairs(zone.quests) do
+            items[#items + 1] = questRow(q.questID, q.state)
+        end
+        if #zone.suggestions > 0 then
+            items[#items + 1] = { type = "note", text = "Also available here:" }
+            for i, s in ipairs(zone.suggestions) do
+                items[#items + 1] = { type = "step", questID = s.questID, state = s.state, index = i }
+            end
+        end
+    end
+    return items, plan
+end
+
 --- Quest icon like the game's: yellow "?" ready to turn in, grey "?" in progress,
 -- yellow "!" can be picked up now, grey "!" not available yet.
 -- @return icon, desaturated, availability ("available" / "locked" / "reputation" / "level" / "skill" for quests
@@ -882,7 +921,8 @@ local function UpdateStoryRow(row, item)
             right = right or (progressColor(done, total) .. done .. "/" .. total .. "|r"),
         })
     elseif item.type == "header" then
-        SetRow(row, { text = item.text, font = "GameFontNormal", color = COLOR_GOLD, right = tostring(item.count) })
+        SetRow(row, { icon = item.icon, text = item.text, font = "GameFontNormal", color = COLOR_GOLD,
+            right = tostring(item.count) })
     elseif item.type == "note" then
         SetRow(row, { text = item.text, font = "GameFontDisable", color = COLOR_DONE })
     else
@@ -1254,6 +1294,23 @@ local function CreateMainFrame()
         end
     end)
 
+    local planButton = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    planButton:SetSize(90, 22)
+    planButton:SetPoint("RIGHT", currentButton, "LEFT", -8, 0)
+    planButton:SetText("Quest Plan")
+    planButton:SetScript("OnClick", function()
+        ns:ShowPlan()
+    end)
+    planButton:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("What to do now, from your quest log: ready turn-ins first, then your",
+            1, 1, 1, true)
+        GameTooltip:AddLine("biggest cluster of quests in one zone, with anything else you could", 1, 1, 1, true)
+        GameTooltip:AddLine("pick up while you're there.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    planButton:SetScript("OnLeave", GameTooltip_Hide)
+
     f:SetScript("OnShow", function()
         ns:RefreshUI()
     end)
@@ -1334,11 +1391,21 @@ function ns:SelectArea(areaID)
     if not areaID or not self.Zones[areaID] then
         return
     end
+    self.planMode = false
     local changed = self.selectedArea ~= areaID
     self.selectedArea = areaID
     if frame and frame:IsShown() then
         self:RefreshUI(not changed)
     end
+end
+
+--- Opens (or switches to) the "Quest Plan" view: what's in your quest log, grouped and
+-- prioritized (see ns:BuildQuestPlan).
+function ns:ShowPlan()
+    self:ShowUI()
+    self:ClearSearch()
+    self.planMode = true
+    self:RefreshUI()
 end
 
 function ns:RefreshUI(keepStoryOffset, skipInspector)
@@ -1359,6 +1426,19 @@ function ns:RefreshUI(keepStoryOffset, skipInspector)
     frame.zoneList:SetItems(BuildZoneItems(), true)
     if areaChanged then
         ScrollZoneIntoView(self.selectedArea)
+    end
+
+    if self.planMode then
+        local items, plan = BuildPlanItems()
+        frame.zoneTitle:SetText("Quest Plan")
+        frame.zoneSummary:SetText(("Quests: |cffffffff%d|r    Zones: |cffffffff%d|r"):format(
+            plan.totalQuests, plan.totalZones))
+        frame.progressBar:SetValue(0)
+        frame.storyList:SetItems(items, keepStoryOffset)
+        if not skipInspector and self.RefreshInspector then
+            self:RefreshInspector(true)
+        end
+        return
     end
 
     if self.searchText then
@@ -1407,6 +1487,9 @@ function ns:SetSearch(text)
         return
     end
     self.searchText, self.searchRaw = search, text
+    if search then
+        self.planMode = false
+    end
     if frame and frame:IsShown() then
         self:RefreshUI(false)
     end

@@ -18,6 +18,10 @@ zone has, which ones you skipped completely, and which quest in a chain you need
 - **Search** (top left of the window, or `/stl find <name>`): find zones, dungeons and raids,
   storylines and quests by name, and see which storyline and zone each quest belongs to. Click a
   result to open it.
+- **Quest Plan** (button next to Current Zone): scans your actual quest log and tells you what to
+  do next - quests ready to turn in first, then your biggest cluster of quests in one zone down
+  to your smallest, since that's the most efficient place to go. Each zone also lists a few
+  quests you haven't picked up yet but could while you're there.
 - **Storyline list** for the selected zone, with a progress bar, level range, `done/total` count
   and a check mark plus strike-through for finished storylines.
 - **Click a storyline** to see its quests in order, one branch at a time. When a quest opens

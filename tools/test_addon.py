@@ -151,11 +151,14 @@ function __visibleText(frame)
     walk(frame)
     return table.concat(out, "\n")
 end
+__questLog = {} -- list of {isHeader=true, title="Zone name"} or {questID=N}, in log order
 C_QuestLog = {
     IsQuestFlaggedCompleted = function(id) return __completed[id] == true end,
     IsOnQuest = function(id) return __inLog[id] == true end,
     ReadyForTurnIn = function(id) return __ready[id] == true end,
     GetTitleForQuestID = function() return nil end,
+    GetNumQuestLogEntries = function() return #__questLog end,
+    GetInfo = function(i) return __questLog[i] end,
 }
 local mapNames = { [1436] = "Westfall", [1429] = "Elwynn Forest", [1415] = "Eastern Kingdoms", [1411] = "Durotar",
                    [9999] = "Sentinel Hill" }
@@ -982,6 +985,58 @@ def main():
         ns:ClearSearch()
         return n""")
     check(other == 0, "search only finds quests for your character (%s found)" % other)
+
+    print("Quest Plan:")
+    # Elwynn Forest: 109 "Report to Gryan Stoutmantle", 52 "Protect the Frontier" (2 quests, the
+    # biggest cluster). Redridge Mountains: 19 "Tharil'zun" (1 quest). Stormwind City: 333 "Harlan
+    # Needs a Resupply", ready to turn in (pulled out to its own section regardless of cluster size).
+    lua_do("""
+        __level = 30
+        wipe(__inLog) wipe(__ready)
+        __questLog = {
+            {isHeader = true, title = "Elwynn Forest"},
+            {questID = 109},
+            {questID = 52},
+            {isHeader = true, title = "Redridge Mountains"},
+            {questID = 19},
+            {isHeader = true, title = "Stormwind City"},
+            {questID = 333},
+        }
+        __inLog[109] = true __inLog[52] = true __inLog[19] = true __inLog[333] = true
+        __ready[333] = true
+    """)
+    plan_summary = lua_do("""local ns = ...
+        local plan = ns:BuildQuestPlan()
+        local names = {}
+        for _, z in ipairs(plan.zones) do names[#names + 1] = z.name .. "(" .. #z.quests .. ")" end
+        return plan.totalQuests .. " " .. plan.totalZones .. " " .. #plan.ready .. " " .. plan.ready[1].questID
+            .. " " .. table.concat(names, ",")""")
+    check(plan_summary == "4 3 1 333 Elwynn Forest(2),Redridge Mountains(1),Stormwind City(1)",
+        "the quest log is grouped by zone, biggest cluster first, turn-ins pulled out (%s)" % plan_summary)
+    render = lua_do("""local ns = ...
+        ns:ShowPlan()
+        local headers, suggestNotes, firstIsReady = {}, 0, nil
+        for _, item in ipairs(StorylinesFrame.storyList.items) do
+            if item.type == "header" then
+                headers[#headers + 1] = item.text .. ":" .. item.count
+                if firstIsReady == nil then firstIsReady = (item.text == "Ready to turn in") end
+            elseif item.type == "note" and item.text == "Also available here:" then
+                suggestNotes = suggestNotes + 1
+            end
+        end
+        return tostring(firstIsReady) .. " | " .. table.concat(headers, ",") .. " | suggestions:" .. suggestNotes""")
+    check(render.startswith("true | Ready to turn in:1,Elwynn Forest:2"),
+        "the plan view leads with ready turn-ins, then the biggest cluster (%s)" % render)
+    check("suggestions:0" not in render, "the plan suggests quests you could also pick up nearby (%s)" % render)
+    cleared = lua_do("""local ns = ...
+        ns:SelectArea(ns.currentArea or next(ns.Zones))
+        return tostring(ns.planMode) .. " " .. StorylinesFrame.zoneTitle.__text""")
+    check(cleared.startswith("false "), "picking a zone again leaves the quest plan view (%s)" % cleared)
+    lua_do("""
+        __questLog = {}
+        wipe(__inLog) wipe(__ready)
+        __completed[333] = nil
+    """)
 
     print("Professions:")
     prof = lua_do("""local ns = ...

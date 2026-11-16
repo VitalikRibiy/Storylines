@@ -2,6 +2,15 @@
 
 All notable changes to Storylines. The newest version is at the top.
 
+## [Unreleased]
+
+### Added
+- **Quest Plan.** A new **Quest Plan** button next to Current Zone scans your actual quest log
+  and tells you what to do next: quests ready to turn in first, then your biggest cluster of
+  quests in one zone (the most efficient place to go), down to your smallest. Each zone also
+  lists a few quests you haven't picked up yet but could while you're there. Click any quest to
+  inspect it and set a waypoint, same as everywhere else in the addon.
+
 ## [1.0.4] - 2026-11-16
 
 ### Changed

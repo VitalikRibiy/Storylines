@@ -726,6 +726,97 @@ function ns:GetCurrentArea()
 end
 
 ---------------------------------------------------------------------------
+-- Quest plan: what to do with your current quest log
+---------------------------------------------------------------------------
+
+--- The player's real quest log, tagged with the in-game zone header each quest is filed under.
+-- @return list of { questID, zoneName }
+function ns:GetMyQuestLog()
+    local list = {}
+    if not (C_QuestLog and C_QuestLog.GetNumQuestLogEntries and C_QuestLog.GetInfo) then
+        return list
+    end
+    local zoneName
+    for i = 1, C_QuestLog.GetNumQuestLogEntries() do
+        local info = C_QuestLog.GetInfo(i)
+        if info then
+            if info.isHeader then
+                zoneName = info.title
+            elseif info.questID and info.questID > 0 then
+                list[#list + 1] = { questID = info.questID, zoneName = zoneName }
+            end
+        end
+    end
+    return list
+end
+
+--- Available quests in a zone that aren't already in `exclude`, sorted by level and capped to a
+-- handful, for "while you're there, you could also grab".
+local function zoneSuggestions(areaID, exclude)
+    local out = {}
+    local function consider(questID, state)
+        if questID and state == ns.STATE_TODO and not exclude[questID] and not ns:IsQuestIgnored(questID)
+            and ns:GetQuestAvailability(questID) == "available" then
+            out[#out + 1] = { questID = questID, state = state }
+        end
+    end
+    for _, story in ipairs(ns:GetZoneStories(areaID)) do
+        for _, step in ipairs(story.steps) do
+            consider(ns:ResolveStep(step))
+        end
+    end
+    for _, side in ipairs(ns:GetZoneSideQuests(areaID)) do
+        consider(side.questID, side.state)
+    end
+    table.sort(out, function(a, b) return ns:GetQuestLevel(a.questID) < ns:GetQuestLevel(b.questID) end)
+    while #out > 5 do
+        table.remove(out)
+    end
+    return out
+end
+
+--- Groups the current quest log by zone, ready-to-turn-in quests pulled out first, and zones
+-- sorted by how many of your quests are there (the biggest cluster is the most efficient place to
+-- go next). Each resolved zone also lists a few quests you haven't picked up yet but could, for
+-- "while you're there".
+-- @return { ready = { {questID, zoneName} }, zones = { {areaID, name, quests = {{questID,state}},
+--   suggestions = {{questID,state}}} }, totalQuests, totalZones }
+function ns:BuildQuestPlan()
+    local byZone, order, total = {}, {}, 0
+    local ready = {}
+    for _, entry in ipairs(self:GetMyQuestLog()) do
+        total = total + 1
+        local state = self:IsQuestReadyForTurnIn(entry.questID) and self.STATE_READY or self.STATE_ACTIVE
+        local areaID = entry.zoneName and self:FindAreaByName(entry.zoneName)
+        local key = areaID or entry.zoneName or "?"
+        local bucket = byZone[key]
+        if not bucket then
+            bucket = { areaID = areaID, name = areaID and self:GetZoneName(areaID) or entry.zoneName or "Unknown",
+                       quests = {}, exclude = {} }
+            byZone[key] = bucket
+            order[#order + 1] = bucket
+        end
+        bucket.quests[#bucket.quests + 1] = { questID = entry.questID, state = state }
+        bucket.exclude[entry.questID] = true
+        if state == self.STATE_READY then
+            ready[#ready + 1] = { questID = entry.questID, zoneName = bucket.name, areaID = bucket.areaID }
+        end
+    end
+    for _, bucket in ipairs(order) do
+        bucket.suggestions = bucket.areaID and zoneSuggestions(bucket.areaID, bucket.exclude) or {}
+        bucket.exclude = nil
+    end
+    table.sort(order, function(a, b) return #a.quests > #b.quests end)
+    table.sort(ready, function(a, b)
+        if a.zoneName ~= b.zoneName then
+            return a.zoneName < b.zoneName
+        end
+        return a.questID < b.questID
+    end)
+    return { ready = ready, zones = order, totalQuests = total, totalZones = #order }
+end
+
+---------------------------------------------------------------------------
 -- Announcements
 ---------------------------------------------------------------------------
 
