@@ -2,7 +2,7 @@
 
 All notable changes to Storylines. The newest version is at the top.
 
-## [Unreleased]
+## [1.0.5] - Unreleased
 
 ### Added
 - **Quest Plan.** A new **Quest Plan** button next to Current Zone scans your actual quest log
