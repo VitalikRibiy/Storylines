@@ -2,6 +2,14 @@
 
 All notable changes to Storylines. The newest version is at the top.
 
+## [Unreleased]
+
+### Fixed
+- **The tracker button never showed up.** It relied on tracker internals (`QuestObjectiveTracker`,
+  `ObjectiveTracker_Update`) that this client doesn't expose. It now finds each quest's own row by
+  matching the title text the tracker already shows, so it no longer depends on any specific
+  tracker API.
+
 ## [1.0.7] - 2026-11-19
 
 ### Changed

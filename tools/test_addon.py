@@ -37,6 +37,8 @@ local function newObject(kind, name)
         table.insert(self.__regions, fs)
         return fs
     end
+    function methods:GetRegions() return unpack(self.__regions or {}) end
+    function methods:GetChildren() return unpack(self.__children or {}) end
     function methods:IsVisible()
         local o = self
         while o do
@@ -126,26 +128,20 @@ tinsert = table.insert
 function wipe(t) for k in pairs(t) do t[k] = nil end return t end
 function strtrim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
 C_Timer = { After = function(_, fn) fn() end }
--- Hooks (by name) a global function, the same two-argument form the addon uses; chains the
--- original call (if any) before the hook, like the real hooksecurefunc.
-function hooksecurefunc(name, hookFn)
-    local original = _G[name]
-    _G[name] = function(...)
-        if original then original(...) end
-        hookFn(...)
-    end
-end
--- Stand-in for Blizzard's own quest tracker refresh: real block layout isn't simulated, it just
--- needs to exist so the addon's hook attaches. The test driver populates usedBlocks itself via
--- __addTrackerBlock to simulate the tracker showing a quest.
-function ObjectiveTracker_Update() end
-QuestObjectiveTracker = { usedBlocks = {} }
-function __addTrackerBlock(questID)
-    local block = newObject("Frame")
-    block.HeaderText = newObject("FontString")
-    QuestObjectiveTracker.usedBlocks[questID] = block
+-- Stand-in for Blizzard's own quest tracker: real layout isn't simulated, just a frame tree the
+-- addon's periodic scan can walk. __addTrackerBlock simulates the tracker showing a quest row
+-- with its title text (as the real tracker would); __fireTickers runs due C_Timer.NewTicker
+-- callbacks on demand instead of waiting on a real timer.
+ObjectiveTrackerFrame = CreateFrame("Frame", "ObjectiveTrackerFrame")
+function __addTrackerBlock(title)
+    local block = CreateFrame("Frame", nil, ObjectiveTrackerFrame)
+    local header = block:CreateFontString()
+    header:SetText(title)
     return block
 end
+__tickers = {}
+C_Timer.NewTicker = function(_, fn) table.insert(__tickers, fn); return { Cancel = function() end } end
+function __fireTickers() for _, fn in ipairs(__tickers) do fn() end end
 
 __completed, __inLog, __ready = {}, {}, {}
 __faction, __race, __map = "Alliance", 1, 1436
@@ -1062,24 +1058,30 @@ def main():
     """)
 
     print("Quest tracker button:")
-    # 109 is a side quest in Elwynn Forest (12); 65 is a step of The Defias Brotherhood in Westfall (40).
+    # 109 is a side quest in Elwynn Forest (12); 65 is a step of The Defias Brotherhood in Westfall
+    # (40). 999999999 is in the player's log but isn't data we have (e.g. a quest we haven't
+    # catalogued yet) - matched by title like the others, but opening it does nothing.
     lua_do("""local ns = ...
         ns:ShowUI(2597)
-        __sideBlock = __addTrackerBlock(109)
-        __storyBlock = __addTrackerBlock(65)
-        __untrackedBlock = __addTrackerBlock(999999999)
-        ObjectiveTracker_Update()""")
+        __questLog = { {questID = 109}, {questID = 65}, {questID = 999999999} }
+        __sideBlock = __addTrackerBlock("[1] " .. ns:GetQuestName(109))
+        __storyBlock = __addTrackerBlock("[12] " .. ns:GetQuestName(65))
+        __unknownBlock = __addTrackerBlock("[1] " .. ns:GetQuestName(999999999))
+        __strayBlock = __addTrackerBlock("[1] Not anybody's quest")
+        __fireTickers()""")
     placed = lua_do("""
         local function hasButton(block)
             for _, c in ipairs(block.__children or {}) do
                 if c.__kind == "Button" then return c end
             end
         end
-        local side, story, untracked = hasButton(__sideBlock), hasButton(__storyBlock), hasButton(__untrackedBlock)
+        local side, story, unknown, stray =
+            hasButton(__sideBlock), hasButton(__storyBlock), hasButton(__unknownBlock), hasButton(__strayBlock)
         return tostring(side ~= nil) .. " " .. tostring(side and side.questID) .. " "
-            .. tostring(story ~= nil) .. " " .. tostring(story and story.questID) .. " " .. tostring(untracked ~= nil)""")
-    check(placed == "true 109 true 65 false",
-          "a button is placed on tracker blocks for quests we track, not for ones we don't (%s)" % placed)
+            .. tostring(story ~= nil) .. " " .. tostring(story and story.questID) .. " "
+            .. tostring(unknown ~= nil) .. " " .. tostring(unknown and unknown.questID) .. " " .. tostring(stray ~= nil)""")
+    check(placed == "true 109 true 65 true 999999999 false",
+          "a button is placed on every tracked quest's row, matched by its title, not on unrelated rows (%s)" % placed)
 
     lua_do("""
         local function button(block)
@@ -1108,12 +1110,15 @@ def main():
           "clicking the button for a storyline quest (65, Westfall) opens and expands its storyline (%s)" % after_story)
 
     not_tracked = lua_do("""local ns = ...
+        local function button(block)
+            for _, c in ipairs(block.__children) do if c.__kind == "Button" then return c end end
+        end
         local before = ns.selectedArea
-        local opened = ns:OpenQuestInStorylines(999999999)
-        return tostring(opened) .. " " .. tostring(ns.selectedArea == before)""")
-    check(not_tracked == "false true", "a quest we don't track does nothing (%s)" % not_tracked)
+        button(__unknownBlock):GetScript("OnClick")(button(__unknownBlock))
+        return tostring(ns.selectedArea == before)""")
+    check(not_tracked == "true", "clicking a tracked quest we have no data for does nothing (%s)" % not_tracked)
 
-    lua_do("local ns = ... ns:CloseInspector()")
+    lua_do("local ns = ... wipe(__questLog) ns:CloseInspector()")
 
     print("Professions:")
     prof = lua_do("""local ns = ...

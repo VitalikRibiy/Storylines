@@ -730,9 +730,14 @@ end
 -- addons like Spoken add their own) that opens its storyline here. It's a
 -- separate button rather than a hook on the quest's own click, so it never
 -- changes what clicking the quest itself does, and needs no option.
+--
+-- Found by matching each tracker row's own title text against the player's
+-- quest log, rather than a specific tracker API: this client's objective
+-- tracker doesn't expose one we could find, but the tracker frame itself
+-- (ObjectiveTrackerFrame) and its title text are standard Blizzard UI.
 ---------------------------------------------------------------------------
 
-local trackerButtons = setmetatable({}, { __mode = "k" }) -- block -> button
+local trackerButtons = setmetatable({}, { __mode = "k" }) -- quest row frame -> button
 
 local function onTrackerButtonClick(button)
     ns:OpenQuestInStorylines(button.questID)
@@ -744,12 +749,11 @@ local function onTrackerButtonEnter(button)
     GameTooltip:Show()
 end
 
---- Gets (creating if needed) the small button for a quest tracker block, anchored just outside its
--- leftmost existing button (Blizzard's own share/track icon, if any) so it never overlaps anything.
-local function getTrackerButton(block)
-    local button = trackerButtons[block]
+--- Gets (creating if needed) the small button for a quest row.
+local function getTrackerButton(row)
+    local button = trackerButtons[row]
     if not button then
-        button = CreateFrame("Button", nil, block)
+        button = CreateFrame("Button", nil, row)
         button:SetSize(14, 14)
         button:SetNormalTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up")
         button:SetPushedTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Down")
@@ -757,42 +761,89 @@ local function getTrackerButton(block)
         button:SetScript("OnClick", onTrackerButtonClick)
         button:SetScript("OnEnter", onTrackerButtonEnter)
         button:SetScript("OnLeave", GameTooltip_Hide)
-        trackerButtons[block] = button
+        trackerButtons[row] = button
     end
     return button
 end
 
---- Places (and shows) our button on every tracker block for a quest we recognize. Called after
--- every tracker refresh, so it re-anchors if Blizzard's own buttons appear or disappear.
+--- The player's tracked quests' own title text (as the tracker itself shows it, stripped of the
+-- "[level]" prefix), lower-cased and mapped to questID. Rebuilt on every scan since the log changes.
+local function trackedTitles()
+    local map = {}
+    for _, entry in ipairs(ns:GetMyQuestLog()) do
+        local name = ns:GetQuestName(entry.questID)
+        if name then
+            map[name:lower()] = entry.questID
+        end
+    end
+    return map
+end
+
+local liveRows = {} -- quest row frames matched on the current scan
+
+--- Scans the Blizzard quest tracker's own frames for each tracked quest's title text, and places
+-- our button on whichever frame shows it (its regions include that title, so that frame is the
+-- quest's own row). Hides any button whose row wasn't matched this time (the quest is no longer
+-- tracked, or the tracker rebuilt its rows).
 local function updateTrackerButtons()
-    local tracker = QuestObjectiveTracker
-    if not (tracker and tracker.usedBlocks) then
+    if not (ObjectiveTrackerFrame and ObjectiveTrackerFrame:IsShown()) then
         return
     end
-    for questID, block in pairs(tracker.usedBlocks) do
-        if type(questID) == "number" and block.HeaderText and (ns.storiesByQuest[questID] or ns.sideZoneByQuest[questID]) then
-            local button = getTrackerButton(block)
-            button.questID = questID
-            button:ClearAllPoints()
-            local anchorTo = block.ShareButton or block.HeaderText
-            if block.ShareButton then
-                button:SetPoint("RIGHT", anchorTo, "LEFT", -2, 0)
-            else
-                button:SetPoint("LEFT", anchorTo, "RIGHT", 4, 0)
+    local titles = trackedTitles()
+    if not next(titles) then
+        return
+    end
+    wipe(liveRows)
+    local function scan(f, depth)
+        if depth > 6 or not f then
+            return
+        end
+        if f.GetRegions then
+            local ok, regions = pcall(function() return { f:GetRegions() } end)
+            if ok then
+                for _, r in ipairs(regions) do
+                    if r.GetText then
+                        local ok2, text = pcall(r.GetText, r)
+                        if ok2 and text then
+                            local stripped = text:match("^%[[%d%+%-]+%]%s*(.*)$") or text
+                            local questID = titles[stripped:lower()]
+                            if questID then
+                                local button = getTrackerButton(f)
+                                button.questID = questID
+                                button:ClearAllPoints()
+                                button:SetPoint("LEFT", r, "RIGHT", 4, 0)
+                                button:Show()
+                                liveRows[f] = true
+                            end
+                        end
+                    end
+                end
             end
-            button:Show()
+        end
+        if f.GetChildren then
+            local ok, kids = pcall(function() return { f:GetChildren() } end)
+            if ok then
+                for _, c in ipairs(kids) do
+                    scan(c, depth + 1)
+                end
+            end
+        end
+    end
+    scan(ObjectiveTrackerFrame, 0)
+    for row, button in pairs(trackerButtons) do
+        if not liveRows[row] then
+            button:Hide()
         end
     end
 end
 
-local trackerHooked = false
---- Hooks (never replaces) the Blizzard quest tracker's refresh, so our buttons get (re)placed
--- whenever it redraws. The function only exists once the tracker UI has loaded, so this is tried
--- again on PLAYER_LOGIN if it isn't there yet.
+local trackerTicker
+--- Starts polling the tracker for our buttons' placement. Needs no hook into any specific tracker
+-- function (this client doesn't expose one we could find): a periodic scan works off the tracker
+-- frame alone. Tried again on PLAYER_LOGIN in case the tracker frame isn't there yet.
 local function hookQuestTracker()
-    if not trackerHooked and ObjectiveTracker_Update then
-        hooksecurefunc("ObjectiveTracker_Update", updateTrackerButtons)
-        trackerHooked = true
+    if not trackerTicker and ObjectiveTrackerFrame and C_Timer and C_Timer.NewTicker then
+        trackerTicker = C_Timer.NewTicker(1, updateTrackerButtons)
     end
 end
 hookQuestTracker()
