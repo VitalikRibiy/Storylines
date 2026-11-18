@@ -2,7 +2,7 @@
 
 All notable changes to Storylines. The newest version is at the top.
 
-## [Unreleased]
+## [1.0.6] - Unreleased
 
 ### Added
 - **Open from the quest log.** A new option (off by default, Options → Lists → "Open from the
