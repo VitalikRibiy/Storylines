@@ -18,10 +18,12 @@ STORY_ZONE = {
 }
 
 # Quest ID -> AreaID to use instead of the quest's own zone.
+# New WoW Forever zones consistently lag behind on QuestieDB's own ZONE tagging for their quests,
+# even once everything else (prereqs, NPC locations) is in: without this they vanish ("no zone")
+# instead of becoming storylines. Verified by checking each quest's own quest-giver/turn-in NPC's
+# actual spawn location, not just the quest text.
 ZONE_OVERRIDES = {
-    # Shen'dralas (new WoW Forever zone, AreaID 16651): QuestieDB has no ZONE field yet for this
-    # chain, even though every quest giver is physically in Shen'dralas. Without this they vanish
-    # ("no zone") instead of becoming a storyline.
+    # Shen'dralas, AreaID 16651
     92914: 16651,   # Strange Pylons
     96010: 16651,   # Fragments of the Pylons
     96018: 16651,   # Powering the Pylons
@@ -42,6 +44,164 @@ ZONE_OVERRIDES = {
     93568: 16651,   # Partially Digested Collar
     93609: 16651,   # Forlorn Necklace
     93644: 16651,   # Tattered Journal
+    93574: 16651,   # Corpsefeeder's Carapace
+
+    # Mount Hyjal, AreaID 616
+    90487: 616,   # Ancient Allies
+    90647: 616,   # The Staff of the Mountain
+    90750: 616,   # More Work?
+    90854: 616,   # Leather for Inclement Weather
+    90865: 616,   # Eyes of the Watchers
+    91696: 616,   # Open Season
+    91697: 616,   # Meet the Elders
+    91698: 616,   # Barkskin Breakout
+    91754: 616,   # Rub Some Dirt In It
+    91755: 616,   # Leaves to Ligatures
+    91770: 616,   # Bark Bite
+    91883: 616,   # Spear of the Skylord
+    91923: 616,   # Celastrus the Bitter
+    92008: 616,   # Premiere Parts
+    92009: 616,   # Crate Expectations
+    92011: 616,   # Rubble Rummage
+    92016: 616,   # Rootwork
+    92017: 616,   # Cleansing Winds
+    92100: 616,   # Anywhere But Here
+    92102: 616,   # Praise
+    92111: 616,   # Of Friend and Fur
+    92147: 616,   # Highfeather Helper
+    92169: 616,   # Paying Back the Pact
+    92171: 616,   # Taking to New Heights
+    92317: 616,   # Stolen Life
+    92328: 616,   # Siegecraft
+    92329: 616,   # Drum Up Trouble
+    92335: 616,   # Ashes of the Legion Ascent
+    92433: 616,   # Now We're Cooking
+    92500: 616,   # A Bit of the Sky
+    92533: 616,   # Twisted Tools
+    92594: 616,   # Kindling, Kinda
+    92612: 616,   # Aid from Moonglade
+    92833: 616,   # Ve'han's Fall
+    92959: 616,   # The Dying Ancients
+    92960: 616,   # Siphoned Ephemeral Essence
+    93127: 616,   # Summit Sentries
+    93407: 616,   # A Thorn in the Paw
+    93422: 616,   # Blackthorne Blackout
+    93444: 616,   # Bait the Beast
+    93521: 616,   # Challenger of the Gods
+    93547: 616,   # A Thorny Solution
+    93567: 616,   # Ends Meet
+    93584: 616,   # Cult Closure
+    93615: 616,   # Kits and Cats
+    93617: 616,   # Prey and Predator
+    93747: 616,   # Violence Into Verdure
+    93759: 616,   # The Bounty of Nature
+    93773: 616,   # The Pact
+    93825: 616,   # Barkbound Blessings
+    93826: 616,   # Deal Dread to Deadwood
+    93827: 616,   # Windswept Wards
+    93828: 616,   # Herbs of the Hollow
+    93830: 616,   # Water of Hyjal
+    93831: 616,   # Sweetpaw Jam
+    93833: 616,   # Wicked Wisdom
+    93834: 616,   # Burrow Beetles
+    93848: 616,   # Work Well Done
+    93925: 616,   # Beads for Brerufa
+    93952: 616,   # Balance Through Strength
+    94479: 616,   # One Person's Trash
+    94504: 616,   # Barkskin Beginnings
+    95006: 616,   # Stolen Power
+    95316: 616,   # The Experimental Method
+    95317: 616,   # Notation, Notation, Notation
+    95318: 616,   # Taste of Ash
+    95319: 616,   # Crystalline Collection
+    95320: 616,   # A Curious Question
+    95378: 616,   # The Hydra's Head
+    95379: 616,   # A Revenge So Sweet
+    95380: 616,   # A Prolific Source
+    95568: 616,   # Seeds for a New Season
+    95569: 616,   # Hope for Hatchlings
+    95611: 616,   # Rites of Respect
+    95766: 616,   # Fine Feathered Friend
+    95793: 616,   # Stemming the Demon Tide
+    96003: 616,   # Drawing Down the Malevolent
+    96025: 616,   # As the Crow Flies
+    96131: 616,   # An Oldstone But An Old Friend
+    96145: 616,   # Past Wing and Claw
+    96209: 616,   # The Ancient, Orokai
+    96252: 616,   # Tarnished Treasures
+    96255: 616,   # Amalgamated Marrow
+    96262: 616,   # Prickly Pinecones
+    96296: 616,   # Fetid Corruption
+    96301: 616,   # Power Wash
+    96302: 616,   # Arch Absolution
+    96303: 616,   # Memory Mist
+    96321: 616,   # The Dying God
+    96322: 616,   # A Revenge Now Bitter
+    96435: 616,   # A Fitting End
+    96550: 616,   # Battle Recall
+    96558: 616,   # Soldier's Solace
+    96666: 616,   # Burrow Bonding
+    96796: 616,   # Woods Workshop
+    96830: 616,   # Farsight Guided
+    96833: 616,   # Venom Maws
+    96930: 616,   # The Capricious Corvid
+    96931: 616,   # Heading Up the Mountain
+    96939: 616,   # The Balance of Life and Death
+    96957: 616,   # Bone Sweet Bone
+    96959: 616,   # Blademaster's Bonfires
+    96964: 616,   # A Clever Creature
+    96971: 616,   # To Outfox a Demon
+    96978: 616,   # Violent Venison
+    96979: 616,   # Sacred Refreshment
+    96983: 616,   # Yashiro's Windwalk
+    96991: 616,   # Trail Assist
+    97009: 616,   # Maerion's Misery
+    97010: 616,   # Blind Vengeance
+    99670: 616,   # Return to Jereman
+
+    # Riverglades, AreaID 16591
+    94961: 16591,   # Biting the Hand
+    94968: 16591,   # Eye of Mugg
+    94972: 16591,   # Tome of Twilight
+    94973: 16591,   # Krol'dok Moulding
+    94974: 16591,   # Key Ingredients
+    94975: 16591,   # A Token of Vengeance
+    94980: 16591,   # Krol'dok Moulding
+    94981: 16591,   # Key Ingredients
+    94982: 16591,   # Eye of Mugg
+    94983: 16591,   # Twilight Mementos
+    94984: 16591,   # Tome of Twilight
+    94997: 16591,   # Lingering Essence
+    94998: 16591,   # Curios of Curiosity
+    95120: 16591,   # WANTED: Old Rot-Chum
+    95122: 16591,   # Unchecked Expansion
+    95123: 16591,   # A Blast Ye Scurvy Dogs!
+    95124: 16591,   # Admiral Lamora
+    95260: 16591,   # Terrors From the Deep
+    95261: 16591,   # It Takes Guts
+    95288: 16591,   # Smuggler's Paradise
+    95294: 16591,   # Smuggler's Bargain
+    95296: 16591,   # Shipping and Handling
+    95312: 16591,   # Coming to Collect
+    95321: 16591,   # Tazzik's Dues
+    95322: 16591,   # Get the Goods
+    95325: 16591,   # We've Been Robbed!
+    95326: 16591,   # The Big Payback
+    95327: 16591,   # All's Well That Ends Well
+    95383: 16591,   # Shipping and Handling
+    95472: 16591,   # Consolation Prize
+    95792: 16591,   # Clear 'em Out
+    95934: 16591,   # Proof of Profit
+    96063: 16591,   # Gaseous Gold
+    96067: 16591,   # Rock 'em and Sock 'em
+
+    # Zephras Isle, AreaID 16593 (only the copies actually given there: "The Great Outdoors" /
+    # "The Adventurer" / "Camping 101" are a repeatable series with a separate, zoneless copy at
+    # many camps across both old and new zones; only Zephras Isle's own copies are fixed here).
+    93797: 16593,   # Boughs in the Wind
+    96101: 16593,   # The Great Outdoors
+    96638: 16593,   # The Adventurer
+    96646: 16593,   # Camping 101: Cooking
 }
 
 # AreaID -> AreaID, applied while resolving a quest's zone (e.g. sub-areas missing from QuestieDB).

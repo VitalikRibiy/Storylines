@@ -5,11 +5,13 @@ All notable changes to Storylines. The newest version is at the top.
 ## [Unreleased]
 
 ### Fixed
-- **Shen'dralas's whole quest chain was missing.** QuestieDB hasn't tagged the new Shen'dralas
-  quests (the restored-pylons storyline at the Gelkis/Magram temple in Desolace) with a zone yet,
-  so all 20 of them were silently dropped instead of becoming a storyline. They're now filed
-  under Shen'dralas directly: a 17-step storyline ("The Pylons of Shen'dralas") plus 3 side
-  quests.
+- **Shen'dralas, Mount Hyjal and Riverglades were missing most of their quests.** New WoW Forever
+  zones consistently lag behind on QuestieDB's own zone tagging, so their quests were silently
+  dropped before they could ever become storylines (same bug, different zones each time).
+  Shen'dralas gets the rest of its pylon-restoration content (a 17-step storyline plus a side
+  quest). Mount Hyjal goes from 8 to 22 storylines and 32 side quests (111 quests recovered).
+  Riverglades gains 5 storylines, including the full "Smuggler's" questline, and more side
+  quests (34 quests recovered). A handful of Zephras Isle's own campsite quests are fixed too.
 
 ## [1.0.5] - 2026-11-16
 
