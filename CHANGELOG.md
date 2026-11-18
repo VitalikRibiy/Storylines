@@ -4,6 +4,12 @@ All notable changes to Storylines. The newest version is at the top.
 
 ## [Unreleased]
 
+### Added
+- **Open from the quest log.** A new option (off by default, Options → Lists → "Open from the
+  quest log") makes clicking a quest in the Blizzard quest log also open its storyline here, with
+  that quest selected. Right-click and shift-click are left alone, so the quest log's own context
+  menu and chat-link still work normally.
+
 ### Fixed
 - **Shen'dralas, Mount Hyjal and Riverglades were missing most of their quests.** New WoW Forever
   zones consistently lag behind on QuestieDB's own zone tagging, so their quests were silently

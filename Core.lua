@@ -26,6 +26,7 @@ local defaults = {
     sortBy = "level",        -- "level" | "name" | "progress"
     hideFinishedZones = false,
     showQuestIDs = false,
+    questLogLink = false,    -- clicking a quest in the Blizzard quest log also opens it here
     treeView = true,         -- show where a storyline branches into separate lines
     showAllProfessions = false, -- list professions this character hasn't learned too
     -- Window (size and position are stored as db.size / db.position once changed)
@@ -726,6 +727,52 @@ function ns:GetCurrentArea()
 end
 
 ---------------------------------------------------------------------------
+-- Quest log integration (optional; see ns.db.questLogLink)
+---------------------------------------------------------------------------
+
+--- Opens the window to the storyline (or side quest) a quest belongs to, with that quest selected
+-- in the details panel. Used by the quest-log click hook below, and safe to call for a quest we
+-- don't track (it just does nothing).
+function ns:OpenQuestInStorylines(questID)
+    local stories = self.storiesByQuest[questID]
+    local areaID = (stories and stories[1] and stories[1].zone) or self.sideZoneByQuest[questID]
+    if not areaID or not self.Zones[areaID] then
+        return false
+    end
+    self:ShowUI(areaID)
+    self:SelectArea(areaID)
+    if self.InspectQuest then
+        self:InspectQuest(questID)
+    end
+    return true
+end
+
+local questLogHooked = false
+local function onQuestLogTitleClick(titleButton, mouseButton)
+    if not ns.db or not ns.db.questLogLink then
+        return
+    end
+    if mouseButton == "RightButton" or IsShiftKeyDown() or IsControlKeyDown() or IsAltKeyDown() then
+        return -- don't interfere with the context menu or the normal shift-click chat link
+    end
+    local questID = titleButton and titleButton.questID
+    if questID then
+        ns:OpenQuestInStorylines(questID)
+    end
+end
+
+--- Hooks (never replaces) the Blizzard quest log's click handler, so the normal click always still
+-- happens too. The function only exists once the quest log UI has loaded, so this is tried again
+-- on PLAYER_LOGIN if it isn't there yet.
+local function hookQuestLog()
+    if not questLogHooked and QuestMapLogTitleButton_OnClick then
+        hooksecurefunc("QuestMapLogTitleButton_OnClick", onQuestLogTitleClick)
+        questLogHooked = true
+    end
+end
+hookQuestLog()
+
+---------------------------------------------------------------------------
 -- Quest plan: what to do with your current quest log
 ---------------------------------------------------------------------------
 
@@ -901,6 +948,7 @@ events:SetScript("OnEvent", function(_, event, arg1)
         if ns.InitMinimapButton then
             ns:InitMinimapButton()
         end
+        hookQuestLog()
     elseif event == "QUEST_TURNED_IN" then
         ns:OnQuestTurnedIn(arg1)
         ns:CheckFollowUpReputation(arg1)

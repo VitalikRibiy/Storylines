@@ -114,7 +114,10 @@ SOUNDKIT = { IG_QUEST_LIST_COMPLETE = 619 }
 function PlaySound() end
 function Mixin(o, m) for k, v in pairs(m) do o[k] = v end return o end
 function GameTooltip_Hide() end
-function IsShiftKeyDown() return false end
+__modifierDown = false -- "shift" | "ctrl" | "alt" | false
+function IsShiftKeyDown() return __modifierDown == "shift" end
+function IsControlKeyDown() return __modifierDown == "ctrl" end
+function IsAltKeyDown() return __modifierDown == "alt" end
 function IsInInstance() return false end
 function GetInstanceInfo() return "", "none" end
 function GetRealZoneText() return __zoneText or "Westfall" end
@@ -123,6 +126,18 @@ tinsert = table.insert
 function wipe(t) for k in pairs(t) do t[k] = nil end return t end
 function strtrim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
 C_Timer = { After = function(_, fn) fn() end }
+-- Hooks (by name) a global function, the same two-argument form the addon uses; chains the
+-- original call (if any) before the hook, like the real hooksecurefunc.
+function hooksecurefunc(name, hookFn)
+    local original = _G[name]
+    _G[name] = function(...)
+        if original then original(...) end
+        hookFn(...)
+    end
+end
+-- Stand-in for Blizzard's own quest log title button click handler: real behavior (tracking,
+-- shift-click chat link) isn't simulated, it just needs to exist so the addon's hook attaches.
+function QuestMapLogTitleButton_OnClick(self, button) end
 
 __completed, __inLog, __ready = {}, {}, {}
 __faction, __race, __map = "Alliance", 1, 1436
@@ -1037,6 +1052,46 @@ def main():
         wipe(__inLog) wipe(__ready)
         __completed[333] = nil
     """)
+
+    print("Quest log link:")
+    # 109 is a side quest in Elwynn Forest (12); 65 is a step of The Defias Brotherhood in Westfall (40).
+    lua_do("""local ns = ...
+        ns.db.questLogLink = false
+        ns:ShowUI(2597)
+        QuestMapLogTitleButton_OnClick({questID = 109}, "LeftButton")""")
+    check(lua_do("local ns = ... return ns.selectedArea") == 2597,
+          "off by default: clicking a quest in the log does nothing")
+
+    lua_do("""local ns = ...
+        ns.db.questLogLink = true
+        QuestMapLogTitleButton_OnClick({questID = 109}, "LeftButton")""")
+    after_side = lua_do("""local ns = ... local v = ns:GetInspected()
+        return ns.selectedArea .. ' ' .. tostring(v.questID) .. ' ' .. tostring(v.story)""")
+    check(after_side == "12 109 nil", "clicking a side quest (109, Elwynn Forest) opens its zone (%s)" % after_side)
+
+    lua_do("""local ns = ...
+        ns:ShowUI(2597)
+        QuestMapLogTitleButton_OnClick({questID = 65}, "LeftButton")""")
+    after_story = lua_do("""local ns = ... local v = ns:GetInspected()
+        return ns.selectedArea .. ' ' .. tostring(v.questID) .. ' ' .. (v.story and v.story.name or 'nil')""")
+    check(after_story == "40 65 The Defias Brotherhood",
+          "clicking a storyline quest (65, Westfall) opens its storyline (%s)" % after_story)
+
+    lua_do("""local ns = ...
+        ns:ShowUI(2597)
+        QuestMapLogTitleButton_OnClick({questID = 65}, "RightButton")""")
+    check(lua_do("local ns = ... return ns.selectedArea") == 2597, "right-click is left alone (context menu)")
+
+    lua_do("""local ns = ...
+        __modifierDown = "shift"
+        QuestMapLogTitleButton_OnClick({questID = 65}, "LeftButton")
+        __modifierDown = false""")
+    check(lua_do("local ns = ... return ns.selectedArea") == 2597, "shift-click is left alone (chat link)")
+
+    lua_do("""local ns = ... QuestMapLogTitleButton_OnClick({questID = 999999999}, "LeftButton")""")
+    check(lua_do("local ns = ... return ns.selectedArea") == 2597, "a quest we don't track does nothing")
+
+    lua_do("local ns = ... ns.db.questLogLink = false ns:CloseInspector()")
 
     print("Professions:")
     prof = lua_do("""local ns = ...
