@@ -2,6 +2,14 @@
 
 All notable changes to Storylines. The newest version is at the top.
 
+## [Unreleased]
+
+### Changed
+- **Open from the quest log, reworked.** Replaced the quest-log click option with a small button
+  next to each quest in your tracker (where addons like Spoken add their own). Click it to open
+  that quest's storyline here, with its chain expanded and that quest selected. Always on, and
+  it's its own separate button, so it never changes what clicking the quest itself does.
+
 ## [1.0.6] - 2026-11-18
 
 ### Added

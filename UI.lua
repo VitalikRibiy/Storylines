@@ -963,6 +963,26 @@ local function OpenSearchResult(item)
     end
 end
 
+--- Opens the zone with the quest's storyline expanded and that quest selected/inspected, same as
+-- clicking it in search results. Used by the quest tracker's button; safe to call for a quest we
+-- don't track (it just does nothing).
+function ns:OpenQuestInStorylines(questID)
+    local stories = self.storiesByQuest[questID]
+    local story = stories and stories[1]
+    local areaID = (story and story.zone) or self.sideZoneByQuest[questID]
+    if not areaID or not self.Zones[areaID] then
+        return false
+    end
+    self:ClearSearch()
+    if story then
+        expandedStories[story.key] = true
+    end
+    self:ShowUI(areaID)
+    self:InspectQuest(questID, story)
+    ScrollStoryListTo(function(i) return i.questID == questID end)
+    return true
+end
+
 local function OnStoryRowClick(row, button)
     local item = row.item
     if not item then

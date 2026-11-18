@@ -367,8 +367,6 @@ local function Build()
     Check(col, "showIgnored", "Show ignored quests and storylines", "Show what you have ignored with right-click.")
     Check(col, "autoZone", "Follow my zone", "Switch to the zone you are in whenever you open the window or "
         .. "change zones.")
-    Check(col, "questLogLink", "Open from the quest log", "Clicking a quest in the Blizzard quest log also opens "
-        .. "its storyline here, with that quest selected. Off by default so it doesn't surprise you.")
     Check(col, "hideTrivial", "Hide gray (too low level) quests", "Hide storylines and side quests that are all too "
         .. "low level to give much experience. Ones you have started are always shown.")
     Slider(col, "maxLevelsAbove", "Hide far above my level", "Hide storylines and side quests that start more than "

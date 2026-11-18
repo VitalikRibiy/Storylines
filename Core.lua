@@ -26,7 +26,6 @@ local defaults = {
     sortBy = "level",        -- "level" | "name" | "progress"
     hideFinishedZones = false,
     showQuestIDs = false,
-    questLogLink = false,    -- clicking a quest in the Blizzard quest log also opens it here
     treeView = true,         -- show where a storyline branches into separate lines
     showAllProfessions = false, -- list professions this character hasn't learned too
     -- Window (size and position are stored as db.size / db.position once changed)
@@ -727,50 +726,76 @@ function ns:GetCurrentArea()
 end
 
 ---------------------------------------------------------------------------
--- Quest log integration (optional; see ns.db.questLogLink)
+-- Quest tracker button: a small button next to each tracked quest (where
+-- addons like Spoken add their own) that opens its storyline here. It's a
+-- separate button rather than a hook on the quest's own click, so it never
+-- changes what clicking the quest itself does, and needs no option.
 ---------------------------------------------------------------------------
 
---- Opens the window to the storyline (or side quest) a quest belongs to, with that quest selected
--- in the details panel. Used by the quest-log click hook below, and safe to call for a quest we
--- don't track (it just does nothing).
-function ns:OpenQuestInStorylines(questID)
-    local stories = self.storiesByQuest[questID]
-    local areaID = (stories and stories[1] and stories[1].zone) or self.sideZoneByQuest[questID]
-    if not areaID or not self.Zones[areaID] then
-        return false
-    end
-    self:ShowUI(areaID)
-    self:SelectArea(areaID)
-    if self.InspectQuest then
-        self:InspectQuest(questID)
-    end
-    return true
+local trackerButtons = setmetatable({}, { __mode = "k" }) -- block -> button
+
+local function onTrackerButtonClick(button)
+    ns:OpenQuestInStorylines(button.questID)
 end
 
-local questLogHooked = false
-local function onQuestLogTitleClick(titleButton, mouseButton)
-    if not ns.db or not ns.db.questLogLink then
+local function onTrackerButtonEnter(button)
+    GameTooltip:SetOwner(button, "ANCHOR_LEFT")
+    GameTooltip:SetText("Open in Storylines")
+    GameTooltip:Show()
+end
+
+--- Gets (creating if needed) the small button for a quest tracker block, anchored just outside its
+-- leftmost existing button (Blizzard's own share/track icon, if any) so it never overlaps anything.
+local function getTrackerButton(block)
+    local button = trackerButtons[block]
+    if not button then
+        button = CreateFrame("Button", nil, block)
+        button:SetSize(14, 14)
+        button:SetNormalTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up")
+        button:SetPushedTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Down")
+        button:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+        button:SetScript("OnClick", onTrackerButtonClick)
+        button:SetScript("OnEnter", onTrackerButtonEnter)
+        button:SetScript("OnLeave", GameTooltip_Hide)
+        trackerButtons[block] = button
+    end
+    return button
+end
+
+--- Places (and shows) our button on every tracker block for a quest we recognize. Called after
+-- every tracker refresh, so it re-anchors if Blizzard's own buttons appear or disappear.
+local function updateTrackerButtons()
+    local tracker = QuestObjectiveTracker
+    if not (tracker and tracker.usedBlocks) then
         return
     end
-    if mouseButton == "RightButton" or IsShiftKeyDown() or IsControlKeyDown() or IsAltKeyDown() then
-        return -- don't interfere with the context menu or the normal shift-click chat link
-    end
-    local questID = titleButton and titleButton.questID
-    if questID then
-        ns:OpenQuestInStorylines(questID)
+    for questID, block in pairs(tracker.usedBlocks) do
+        if type(questID) == "number" and block.HeaderText and (ns.storiesByQuest[questID] or ns.sideZoneByQuest[questID]) then
+            local button = getTrackerButton(block)
+            button.questID = questID
+            button:ClearAllPoints()
+            local anchorTo = block.ShareButton or block.HeaderText
+            if block.ShareButton then
+                button:SetPoint("RIGHT", anchorTo, "LEFT", -2, 0)
+            else
+                button:SetPoint("LEFT", anchorTo, "RIGHT", 4, 0)
+            end
+            button:Show()
+        end
     end
 end
 
---- Hooks (never replaces) the Blizzard quest log's click handler, so the normal click always still
--- happens too. The function only exists once the quest log UI has loaded, so this is tried again
--- on PLAYER_LOGIN if it isn't there yet.
-local function hookQuestLog()
-    if not questLogHooked and QuestMapLogTitleButton_OnClick then
-        hooksecurefunc("QuestMapLogTitleButton_OnClick", onQuestLogTitleClick)
-        questLogHooked = true
+local trackerHooked = false
+--- Hooks (never replaces) the Blizzard quest tracker's refresh, so our buttons get (re)placed
+-- whenever it redraws. The function only exists once the tracker UI has loaded, so this is tried
+-- again on PLAYER_LOGIN if it isn't there yet.
+local function hookQuestTracker()
+    if not trackerHooked and ObjectiveTracker_Update then
+        hooksecurefunc("ObjectiveTracker_Update", updateTrackerButtons)
+        trackerHooked = true
     end
 end
-hookQuestLog()
+hookQuestTracker()
 
 ---------------------------------------------------------------------------
 -- Quest plan: what to do with your current quest log
@@ -948,7 +973,7 @@ events:SetScript("OnEvent", function(_, event, arg1)
         if ns.InitMinimapButton then
             ns:InitMinimapButton()
         end
-        hookQuestLog()
+        hookQuestTracker()
     elseif event == "QUEST_TURNED_IN" then
         ns:OnQuestTurnedIn(arg1)
         ns:CheckFollowUpReputation(arg1)

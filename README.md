@@ -22,6 +22,9 @@ zone has, which ones you skipped completely, and which quest in a chain you need
   do next - quests ready to turn in first, then your biggest cluster of quests in one zone down
   to your smallest, since that's the most efficient place to go. Each zone also lists a few
   quests you haven't picked up yet but could while you're there.
+- **Tracker button**: a small button next to each quest in your quest tracker (where addons like
+  Spoken add their own) opens its storyline here, with that quest's chain expanded and the quest
+  selected.
 - **Storyline list** for the selected zone, with a progress bar, level range, `done/total` count
   and a check mark plus strike-through for finished storylines.
 - **Click a storyline** to see its quests in order, one branch at a time. When a quest opens
@@ -72,11 +75,9 @@ zone has, which ones you skipped completely, and which quest in a chain you need
 - **Options** (Options → AddOns → Storylines, `/stl options`, or right-click the minimap button):
   - *Window*: scale, background opacity, text size, which side the details panel opens on, lock
     window, close with Escape, reset size and position.
-  - *Lists*: hide completed, side quests, show ignored, follow my zone, open from the quest log
-    (clicking a quest in the Blizzard quest log also opens its storyline here; off by default),
-    hide gray quests, hide quests far above your level (storylines and side quests; started ones
-    always stay), sort by level, name or progress, hide finished zones, show unlearned professions,
-    show quest IDs.
+  - *Lists*: hide completed, side quests, show ignored, follow my zone, hide gray quests, hide
+    quests far above your level (storylines and side quests; started ones always stay), sort by
+    level, name or progress, hide finished zones, show unlearned professions, show quest IDs.
   - *Notifications*: chat messages, reputation warnings, completion sound.
   - *Map*: minimap button, waypoints with TomTom or the game's map pin.
   - Clear ignored quests and reset all settings.

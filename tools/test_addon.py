@@ -135,9 +135,17 @@ function hooksecurefunc(name, hookFn)
         hookFn(...)
     end
 end
--- Stand-in for Blizzard's own quest log title button click handler: real behavior (tracking,
--- shift-click chat link) isn't simulated, it just needs to exist so the addon's hook attaches.
-function QuestMapLogTitleButton_OnClick(self, button) end
+-- Stand-in for Blizzard's own quest tracker refresh: real block layout isn't simulated, it just
+-- needs to exist so the addon's hook attaches. The test driver populates usedBlocks itself via
+-- __addTrackerBlock to simulate the tracker showing a quest.
+function ObjectiveTracker_Update() end
+QuestObjectiveTracker = { usedBlocks = {} }
+function __addTrackerBlock(questID)
+    local block = newObject("Frame")
+    block.HeaderText = newObject("FontString")
+    QuestObjectiveTracker.usedBlocks[questID] = block
+    return block
+end
 
 __completed, __inLog, __ready = {}, {}, {}
 __faction, __race, __map = "Alliance", 1, 1436
@@ -1053,45 +1061,59 @@ def main():
         __completed[333] = nil
     """)
 
-    print("Quest log link:")
+    print("Quest tracker button:")
     # 109 is a side quest in Elwynn Forest (12); 65 is a step of The Defias Brotherhood in Westfall (40).
     lua_do("""local ns = ...
-        ns.db.questLogLink = false
         ns:ShowUI(2597)
-        QuestMapLogTitleButton_OnClick({questID = 109}, "LeftButton")""")
-    check(lua_do("local ns = ... return ns.selectedArea") == 2597,
-          "off by default: clicking a quest in the log does nothing")
+        __sideBlock = __addTrackerBlock(109)
+        __storyBlock = __addTrackerBlock(65)
+        __untrackedBlock = __addTrackerBlock(999999999)
+        ObjectiveTracker_Update()""")
+    placed = lua_do("""
+        local function hasButton(block)
+            for _, c in ipairs(block.__children or {}) do
+                if c.__kind == "Button" then return c end
+            end
+        end
+        local side, story, untracked = hasButton(__sideBlock), hasButton(__storyBlock), hasButton(__untrackedBlock)
+        return tostring(side ~= nil) .. " " .. tostring(side and side.questID) .. " "
+            .. tostring(story ~= nil) .. " " .. tostring(story and story.questID) .. " " .. tostring(untracked ~= nil)""")
+    check(placed == "true 109 true 65 false",
+          "a button is placed on tracker blocks for quests we track, not for ones we don't (%s)" % placed)
 
-    lua_do("""local ns = ...
-        ns.db.questLogLink = true
-        QuestMapLogTitleButton_OnClick({questID = 109}, "LeftButton")""")
+    lua_do("""
+        local function button(block)
+            for _, c in ipairs(block.__children) do if c.__kind == "Button" then return c end end
+        end
+        local b = button(__sideBlock)
+        b:GetScript("OnClick")(b)""")
     after_side = lua_do("""local ns = ... local v = ns:GetInspected()
         return ns.selectedArea .. ' ' .. tostring(v.questID) .. ' ' .. tostring(v.story)""")
-    check(after_side == "12 109 nil", "clicking a side quest (109, Elwynn Forest) opens its zone (%s)" % after_side)
+    check(after_side == "12 109 nil", "clicking the button for a side quest (109, Elwynn Forest) opens its zone (%s)" % after_side)
 
-    lua_do("""local ns = ...
-        ns:ShowUI(2597)
-        QuestMapLogTitleButton_OnClick({questID = 65}, "LeftButton")""")
+    lua_do("""
+        local function button(block)
+            for _, c in ipairs(block.__children) do if c.__kind == "Button" then return c end end
+        end
+        local b = button(__storyBlock)
+        b:GetScript("OnClick")(b)""")
     after_story = lua_do("""local ns = ... local v = ns:GetInspected()
-        return ns.selectedArea .. ' ' .. tostring(v.questID) .. ' ' .. (v.story and v.story.name or 'nil')""")
-    check(after_story == "40 65 The Defias Brotherhood",
-          "clicking a storyline quest (65, Westfall) opens its storyline (%s)" % after_story)
+        local stepShown = false
+        for _, item in ipairs(StorylinesFrame.storyList.items) do
+            if item.type == "step" and item.questID == 65 then stepShown = true end
+        end
+        return ns.selectedArea .. ' ' .. tostring(v.questID) .. ' ' .. (v.story and v.story.name or 'nil')
+            .. ' ' .. tostring(stepShown)""")
+    check(after_story == "40 65 The Defias Brotherhood true",
+          "clicking the button for a storyline quest (65, Westfall) opens and expands its storyline (%s)" % after_story)
 
-    lua_do("""local ns = ...
-        ns:ShowUI(2597)
-        QuestMapLogTitleButton_OnClick({questID = 65}, "RightButton")""")
-    check(lua_do("local ns = ... return ns.selectedArea") == 2597, "right-click is left alone (context menu)")
+    not_tracked = lua_do("""local ns = ...
+        local before = ns.selectedArea
+        local opened = ns:OpenQuestInStorylines(999999999)
+        return tostring(opened) .. " " .. tostring(ns.selectedArea == before)""")
+    check(not_tracked == "false true", "a quest we don't track does nothing (%s)" % not_tracked)
 
-    lua_do("""local ns = ...
-        __modifierDown = "shift"
-        QuestMapLogTitleButton_OnClick({questID = 65}, "LeftButton")
-        __modifierDown = false""")
-    check(lua_do("local ns = ... return ns.selectedArea") == 2597, "shift-click is left alone (chat link)")
-
-    lua_do("""local ns = ... QuestMapLogTitleButton_OnClick({questID = 999999999}, "LeftButton")""")
-    check(lua_do("local ns = ... return ns.selectedArea") == 2597, "a quest we don't track does nothing")
-
-    lua_do("local ns = ... ns.db.questLogLink = false ns:CloseInspector()")
+    lua_do("local ns = ... ns:CloseInspector()")
 
     print("Professions:")
     prof = lua_do("""local ns = ...
