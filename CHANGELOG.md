@@ -2,6 +2,15 @@
 
 All notable changes to Storylines. The newest version is at the top.
 
+## [Unreleased]
+
+### Fixed
+- **Shen'dralas's whole quest chain was missing.** QuestieDB hasn't tagged the new Shen'dralas
+  quests (the restored-pylons storyline at the Gelkis/Magram temple in Desolace) with a zone yet,
+  so all 20 of them were silently dropped instead of becoming a storyline. They're now filed
+  under Shen'dralas directly: a 17-step storyline ("The Pylons of Shen'dralas") plus 3 side
+  quests.
+
 ## [1.0.5] - 2026-11-16
 
 ### Added

@@ -10,6 +10,7 @@ STORY_NAMES = {
     6: "Northshire Valley",  # automatic name would be "Grape Manifest"
     8286: "The Scepter of the Shifting Sands",  # the Ahn'Qiraj opening chain (31 steps)
     92514: "The Fate of Zephras",  # Zephras Isle main storyline; automatic name was Horde-only
+    92914: "The Pylons of Shen'dralas",  # automatic name was "Not on Squealing Terms", a side branch
 }
 
 # Storyline key -> AreaID to file it under (when the automatic zone is wrong).
@@ -18,6 +19,29 @@ STORY_ZONE = {
 
 # Quest ID -> AreaID to use instead of the quest's own zone.
 ZONE_OVERRIDES = {
+    # Shen'dralas (new WoW Forever zone, AreaID 16651): QuestieDB has no ZONE field yet for this
+    # chain, even though every quest giver is physically in Shen'dralas. Without this they vanish
+    # ("no zone") instead of becoming a storyline.
+    92914: 16651,   # Strange Pylons
+    96010: 16651,   # Fragments of the Pylons
+    96018: 16651,   # Powering the Pylons
+    93016: 16651,   # A Brief History Lesson
+    93394: 16651,   # Meeting the Magister
+    93341: 16651,   # Forlorn Gardens
+    93362: 16651,   # What They've Done to My Peonies
+    93594: 16651,   # Word of the Woods
+    93404: 16651,   # Rot and Regret
+    93601: 16651,   # Passing the Blame
+    93604: 16651,   # Agamaggan's Blood
+    93606: 16651,   # Not on Squealing Terms
+    93450: 16651,   # Phantasmal Problems
+    93546: 16651,   # Spectral Iron Ore
+    96060: 16651,   # Tempered Expectations
+    99257: 16651,   # A Heart of Crystal
+    99258: 16651,   # Mana Mania
+    93568: 16651,   # Partially Digested Collar
+    93609: 16651,   # Forlorn Necklace
+    93644: 16651,   # Tattered Journal
 }
 
 # AreaID -> AreaID, applied while resolving a quest's zone (e.g. sub-areas missing from QuestieDB).
@@ -54,7 +78,6 @@ LINK_QUESTS = [
     (495, 518),      # The Crown of Will (Melisara, Tarren Mill): same quest name, 3-step kill chain
     (638, 639),       # Trollbane -> Sigil of Strom (the Uldaman key sigils, Stromgarde/Hammerfall)
     (1198, 1200),     # In Search of Thaelrid -> Blackfathom Villainy (QuestieDB flags hasPrereq=true)
-    (78092, 78093),   # It Must Be Destroyed -> Return to Delgren (Paladin, "Orb of Althalaxx")
     (79970, 81762),   # Aeonas the Vindicated -> Some Good News (Paladin, Cathedral of Light)
     (81762, 81764),   # Some Good News -> The Mysterious Merchant (Paladin)
     (81764, 81765),   # The Mysterious Merchant -> Elrick, Paladin of the Silver Hand
