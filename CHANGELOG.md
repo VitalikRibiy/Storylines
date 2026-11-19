@@ -2,7 +2,7 @@
 
 All notable changes to Storylines. The newest version is at the top.
 
-## [Unreleased]
+## [1.0.8] - Unreleased
 
 ### Fixed
 - **The tracker button never showed up.** It relied on tracker internals (`QuestObjectiveTracker`,
